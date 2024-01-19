@@ -154,6 +154,12 @@ Function copy_time_series(c As Range, src_ws As Worksheet, dst_wss As Collection
     For i = SRC_TITLE_ROW+1 To c.Parent.UsedRange.Rows.Count
         ' Determine the pathway and corresponding destination worksheet for each row
         pathway = src_ws.Cells(i, src_pathway_col.Column).Value
+
+        ' If the pathway equals baseline and the variable name is Baseline emissions total, instead of copying the data to the baseline sheet, copy it to the aggregate sheet
+        If pathway = BASELINE And src_ws.Cells(i, src_measure_variable_col.Column).Value = "Baseline emissions total" Then
+            pathway = "Aggregate"
+        End If
+
         Set dst_ws = dst_wss(pathway)
         row_idx = dst_row(pathway)
   
@@ -180,6 +186,24 @@ Function copy_time_series(c As Range, src_ws As Worksheet, dst_wss As Collection
     Set copy_time_series = dst_row
 End Function
 
+' Remove the "Measure ID" and "Measure Name" columns from the given worksheet
+Function RemoveColumnsFromSheet(ws As Worksheet)
+    ' Find and delete the "Measure ID" column
+    Dim measure_id_col As Range
+    Set measure_id_col = find_col(ws.Rows(DST_TITLE_ROW), "Measure ID")
+    If Not measure_id_col Is Nothing Then
+        measure_id_col.EntireColumn.Delete
+    End If
+
+    ' Find and delete the "Measure Name" column
+    Dim measure_name_col As Range
+    Set measure_name_col = find_col(ws.Rows(DST_TITLE_ROW), "Measure Name")
+    If Not measure_name_col Is Nothing Then
+        measure_name_col.EntireColumn.Delete
+    End If
+End Function
+
+
 ' ------------------------------------------------------------
 ' Main subroutine to initiate the data conversion process
 Sub Main()
@@ -197,6 +221,7 @@ Sub Main()
     dst_wss.Add create_sd_sheet(START_YEAR, END_YEAR, "Baseline data"), BASELINE
     dst_wss.Add create_sd_sheet(START_YEAR, END_YEAR, "BP Measure level data"), BALANCED
     dst_wss.Add create_sd_sheet(START_YEAR, END_YEAR, "AAP Measure level data"), ADDITIONAL_ACTION
+    dst_wss.Add create_sd_sheet(START_YEAR, END_YEAR, "Aggregate data"), "Aggregate"
 
     ' Initialize a collection to track the current row for data entry in each output sheet
     Dim dst_row As Collection
@@ -204,6 +229,7 @@ Sub Main()
     dst_row.Add DST_TITLE_ROW + 1, BASELINE
     dst_row.Add DST_TITLE_ROW + 1, BALANCED
     dst_row.Add DST_TITLE_ROW + 1, ADDITIONAL_ACTION
+    dst_row.Add DST_TITLE_ROW + 1, "Aggregate"
 
     ' Iterate through each cell in the title row of the source sheet to identify time series
     Dim c As Range
@@ -218,10 +244,9 @@ Sub Main()
         If c.Column = Columns("ZZ").Column Then Exit For
     Next c
 
-    ' Special handling for the baseline data: remove the "Measure Name" column
-    Dim blws As Worksheet: Set blws = dst_wss(BASELINE)
-    Dim measure_name_col As Range: Set measure_name_col = find_col(blws.Rows(DST_TITLE_ROW), "Measure Name")
-    measure_name_col.EntireColumn.Delete
+    ' Special handling for the baseline data: remove the "Measure ID" and "Measure Name" columns
+    RemoveColumnsFromSheet dst_wss(BASELINE)
+    RemoveColumnsFromSheet dst_wss("Aggregate")
 
     ' Autofit the columns in each output sheet for better presentation
     Dim ws As Worksheet
