@@ -1,4 +1,7 @@
 
+' A macro to convert the "By measure" sheets to the CB7 sector databook format
+' author: Sam Van Stroud
+
 ' Configurable constants
 Const SRC_TITLE_ROW As Integer = 2
 Const DST_TITLE_ROW As Integer = 1
@@ -6,7 +9,7 @@ Const START_YEAR As Long = 2015
 Const END_YEAR As Integer = 2050
 Const NUM_YEARS As Integer = END_YEAR - START_YEAR + 1
 
-Const SOURCE_SHEET_NAME As String = "By Measure V2"
+Const SOURCE_SHEET_NAME As String = "By measure"
 Const SECTOR_NAME As String = "Waste"
 
 ' Pathways
@@ -17,28 +20,28 @@ Const ADDITIONAL_ACTION As String = "Additional Action Pathway"
 
 ' ------------------------------------------------------------
 Function is_time_series_start(c As Range) As Boolean
-  '
-  ' Check if a cell is the start of a time series
-  '
-  If Not IsNumeric(c.Value) Then
-    is_time_series_start = False
-    Exit Function
-  ElseIf c.Value <> CStr(START_YEAR) Then
-    is_time_series_start = False
-    Exit Function
-  End If
+    '
+    ' Check if a cell is the start of a time series
+    ' Assume time series starts with START_YEAR and increments yearly
+    '
 
-  ' this cell has the right start value, now check the rest of the row
-  For i = 1 To END_YEAR - START_YEAR
-    If c.Offset(0, i).Value <> START_YEAR + i Then
-      is_time_series_start = False
-      Exit Function
+    ' Check if the cell is numeric and has the correct start value
+    If Not IsNumeric(c.Value) OrElse c.Value <> CStr(START_YEAR) Then
+        is_time_series_start = False
+        Exit Function
     End If
-  Next i
-  is_time_series_start = True
+
+    ' Check the subsequent years in the row for correct sequence
+    Dim i As Integer
+    For i = 1 To END_YEAR - START_YEAR
+        If c.Offset(0, i).Value <> START_YEAR + i Then
+            is_time_series_start = False
+            Exit Function
+        End If
+    Next i
+
+    is_time_series_start = True
 End Function
-
-
 
 
 Function create_new_sheet(name As String) As Worksheet
@@ -122,12 +125,12 @@ Function find_col(cols As Range, col_name As String) As Range
     End If
   Next col
   ' error if we didn't find the column
-  Debug.Print ("ERROR: Could not find column " & col_name)
+  Err.Raise 1000, Description:="Could not find column " & col_name
 End Function
 
 Function copy_time_series(c As Range, src_ws As Worksheet, dst_wss As Collection, dst_row As Collection) As Collection
   '
-  ' Copy a time series from a "By Measure" sheet to the sector databook
+  ' Copy a time series from a "By measure" sheet to the sector databook
   '
   ' get country as string
   Dim country As String
@@ -155,7 +158,10 @@ Function copy_time_series(c As Range, src_ws As Worksheet, dst_wss As Collection
   Dim src_range As Range
   Dim dst_range As Range
   Dim i As Integer
-  For i = SRC_TITLE_ROW+1 To c.CurrentRegion.Rows.Count
+  
+  ' count the number of non empty rows in column A
+  Debug.Print ("Start and end rows: " & SRC_TITLE_ROW & " : " & c.Parent.UsedRange.Rows.Count)
+  For i = SRC_TITLE_ROW+1 To c.Parent.UsedRange.Rows.Count
     ' get the target worksheet based on the Pathway column in the source sheet
     pathway = src_ws.Cells(i, src_pathway_col.Column).Value
     Set dst_ws = dst_wss(pathway)
@@ -188,7 +194,7 @@ Sub Main()
   '
   ' Main Macro
   '
-  Debug.Print (vbNewLine & "NEW RUN2")
+  Debug.Print (vbNewLine & "START CONVERSION...")
 
   ' save a reference to the source sheet
   Dim src_ws As Worksheet
