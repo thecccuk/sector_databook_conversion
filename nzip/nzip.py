@@ -145,12 +145,12 @@ def aggregate_timeseries_country(df, timeseries, variable_name, variable_unit, w
     if scale:
         df[emissions_cols] = df[emissions_cols] * scale
 
-    # map some technology types to a common name
+    # map some technology types to a new name
     tech_map = {'Blue Hydrogen': 'Hydrogen', 'Green Hydrogen': 'Hydrogen', 'Electric': 'Electrification'}
     df['Measure Technology'] = df['Technology Type'].replace(tech_map)
         
     # sum rows corresponding to the same measure
-    agg_emissions_df = df.groupby(['CCC Subsector', 'Measure Technology']+CATEGORIES)[emissions_cols].sum()
+    agg_emissions_df = df.groupby(['CCC Subsector', 'Measure Technology'] + CATEGORIES)[emissions_cols].sum()
 
     # add country column
     agg_emissions_df['Country'] = country
@@ -177,7 +177,9 @@ def sd_measure_level(df, args_list):
     return sd_df
 
 def baseline_from_measure_level(df):
-    bl_df = df.groupby(['Country', 'Sector',  'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']).sum(numeric_only=True)
+    cols = ['Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
+    cols = cols[:4] + [f'Category{i+2}: {c}' for i, c in enumerate(CATEGORIES, 1)] + cols[4:]
+    bl_df = df.groupby(cols).sum(numeric_only=True)
     bl_df = bl_df.reset_index()
     bl_df = bl_df.rename(columns={'Measure Variable': 'Baseline Variable'})
     bl_df = bl_df.drop(columns=['Measure Name'])
