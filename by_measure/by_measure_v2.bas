@@ -6,9 +6,8 @@
 ' Define configurable constants for easy modification and readability
 Const SRC_TITLE_ROW As Integer = 1       ' Row number where titles are located in source sheet
 Const DST_TITLE_ROW As Integer = 1       ' Row number where titles will be placed in destination sheet
-Const START_YEAR As Long = 2015          ' Starting year for the data series
-Const END_YEAR As Integer = 2050         ' Ending year for the data series
-Const NUM_YEARS As Integer = END_YEAR - START_YEAR + 1  ' Total number of years in the data series
+Const START_YEAR As Long = 2015          ' Starting year for the time series
+Const END_YEAR As Integer = 2050         ' Ending year for the time series
 
 ' Constants for specific sheet names and sector
 Const SOURCE_SHEET_NAME As String = "By measure"  ' Name of the source sheet
@@ -19,6 +18,8 @@ Const BASELINE As String = "Baseline"
 Const BALANCED As String = "Balanced Pathway"
 Const ADDITIONAL_ACTION As String = "Additional Action Pathway"
 ' -----------------------------------------------------------------------------------------------
+Const NUM_YEARS As Integer = END_YEAR - START_YEAR + 1  ' Total number of years in the data series
+
 ' Compute column indices in the source sheet
 Private SRC_COL_COUNTRY As Integer
 Private SRC_COL_SUBSECTOR As Integer
