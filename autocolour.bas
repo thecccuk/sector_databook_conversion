@@ -31,10 +31,10 @@ Sub AutoColour()
     End If
     
     ' Define colors
-    linkedDataColor = RGB(255, 200, 200) ' Light red for linked data within the same workbook
-    linkedWorkbookColor = RGB(255, 255, 200) ' Light yellow for links to another workbook
-    formulaColor = RGB(200, 255, 200) ' Light green for formulas
-    valueColor = RGB(200, 200, 255) ' Light blue for values
+    linkedDataColor = RGB(255, 204, 102) ' yellow for linked data within the same workbook
+    linkedWorkbookColor = RGB(255, 199, 206) ' red for links to another workbook
+    formulaColor = RGB(204, 236, 255) ' blue for formulas
+    numericColor = RGB(153, 255, 204) ' green for values
     
     ' Loop through each cell in the intersected range
     For Each cell In rng.Cells
@@ -49,11 +49,16 @@ Sub AutoColour()
             Else
                 cell.Interior.Color = formulaColor ' Color for formulas
             End If
-        ' Check for values
-        Else
-            If Not IsEmpty(cell.Value) Then
-                cell.Interior.Color = valueColor ' Color for values
+        ' Skip coloring for hardcoded string values
+        ElseIf Not IsEmpty(cell.Value) And Not cell.HasFormula Then
+            If IsNumeric(cell.Value) Then
+                cell.Interior.Color = numericColor
+            Else
+                cell.Interior.ColorIndex = xlNone
             End If
+        ' Empty cells are changed to be uncolored
+        Else
+            cell.Interior.ColorIndex = xlNone
         End If
     Next cell
 
@@ -65,4 +70,3 @@ CleanUp:
         .EnableEvents = True
     End With
 End Sub
-
