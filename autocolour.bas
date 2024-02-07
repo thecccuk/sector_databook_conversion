@@ -62,6 +62,9 @@ Sub AutoColour()
         End If
     Next cell
 
+    ' After processing individual cells, check for and mark columns with missing values
+    'MarkColumnsWithMissingValues rng
+
 CleanUp:
     ' Re-enable Excel updates
     With Application
@@ -69,4 +72,32 @@ CleanUp:
         .Calculation = xlCalculationAutomatic
         .EnableEvents = True
     End With
+End Sub
+
+
+Sub MarkColumnsWithMissingValues(rng As Range)
+    Dim col As Range
+    Dim cell As Range
+    Dim i As Long
+    Dim missingValuesColor As Long
+    
+    ' Define color for missing values (empty cells)
+    missingValuesColor = RGB(255, 235, 156) ' Light yellow, adjust as needed
+    
+    ' Iterate through each column in the range
+    For Each col In rng.Columns
+        Dim hasFoundFilledCell As Boolean
+        hasFoundFilledCell = False ' Reset for each new column
+        
+        ' Check each cell in the column
+        For i = 1 To col.Rows.Count
+            Set cell = col.Cells(i, 1)
+            If Not IsEmpty(cell.Value) Then
+                hasFoundFilledCell = True ' Mark that we've found a filled cell
+            ElseIf hasFoundFilledCell And IsEmpty(cell.Value) Then
+                ' If we've previously found a filled cell and the current cell is empty, color it
+                cell.Interior.Color = missingValuesColor
+            End If
+        Next i
+    Next col
 End Sub
