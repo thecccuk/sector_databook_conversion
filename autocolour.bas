@@ -1,3 +1,27 @@
+' Macro Name: AutoColour
+' Purpose: This set of macros automatically colors cells in a selected Excel range based on specific criteria.
+'          Colors are coloured differently based on whether they contain:
+'          - Formulas linking to other workbooks (colored red)
+'          - Formulas linking within the same workbook (colored yellow)
+'          - Formulas not linking to other cells or workbooks (colored blue)
+'          - Numeric values (colored green)
+'          - Leaves cells with string values and unfulfilled conditions uncolored (white)
+'
+' How to Use:
+' 1. Open Excel and navigate to the workbook where you want to add and use the macro.
+' 2. Press Alt + F11 to open the Visual Basic for Applications (VBA) editor.
+' 3. In the Project Explorer window (usually on the left side), right-click on any of the items under "VBAProject (YourWorkbookName.xlsm)" and select Insert > Module. This creates a new module.
+' 4. Copy the entire code for both `AutoColour` and `MarkColumnsWithMissingValues` macros (including this docstring) and paste it into the newly created module.
+' 5. Press Ctrl + S to save your workbook. If it's not already a .xlsm (macro-enabled workbook), you will be prompted to save it as such.
+' 6. Close the VBA editor and return to your Excel workbook.
+' 7. Before running the macro, select the cells in your Excel sheet that you want to color.
+' 8. To run the `AutoColour` macro, you can do the following: Press Alt + F8, select `AutoColour` from the list, and click "Run."
+'
+' Notes:
+' - Ensure your workbook is saved before running the macro to prevent any loss of data.
+' - Macros may be disabled in Excel by default. If the macro doesn't run, you might need to enable macros in Excel's Trust Center settings (File > Options > Trust Center > Trust Center Settings > Macro Settings).
+'
+
 Sub AutoColour()
     Dim cell As Range
     Dim rng As Range
