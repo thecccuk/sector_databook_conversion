@@ -86,6 +86,10 @@ Sub Main()
     RemoveColumnsFromSheet dst_wss(BASELINE)
     RemoveColumnsFromSheet dst_wss("Aggregate")
 
+    ' Rename the "Measure Variable" column
+    dst_wss(BASELINE).Cells(DST_TITLE_ROW, find_col(dst_wss(BASELINE).Rows(DST_TITLE_ROW), "Measure Variable").Column).Value = "Baseline Variable"
+    dst_wss("Aggregate").Cells(DST_TITLE_ROW, find_col(dst_wss("Aggregate").Rows(DST_TITLE_ROW), "Measure Variable").Column).Value = "Aggregate Variable"
+
     ' Autofit the columns in each output sheet for better presentation
     Dim ws As Worksheet
     For Each ws In dst_wss
@@ -136,8 +140,17 @@ Function copy_row(src_row As Range, src_ws As Worksheet, dst_wss As Collection, 
 End Function
 
 Function get_index(ws As Worksheet, columnName As String) As Integer
-    get_index = ws.Rows(SRC_TITLE_ROW).Find(What:=columnName, LookIn:=xlValues, LookAt:=xlWhole).Column
+    Dim foundRange As Range
+    Set foundRange = ws.Rows(SRC_TITLE_ROW).Find(What:=columnName, LookIn:=xlValues, LookAt:=xlWhole)
+    
+    If Not foundRange Is Nothing Then
+        get_index = foundRange.Column
+    Else
+        Debug.Print "Error: Column '" & columnName & "' not found in worksheet " & ws.Name
+        get_index = -1 ' Return -1 or another appropriate value to indicate the column wasn't found
+    End If
 End Function
+
 
 Function lookup(ws As Worksheet, columnName As String, rowIndex As Integer) As Variant
     Dim targetColumn As Range
