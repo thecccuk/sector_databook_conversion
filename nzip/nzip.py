@@ -240,6 +240,18 @@ def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
     agg_df.loc['Direct traded emissions total', 'Variable Unit'] = 'MtCO2e'
     agg_df.loc['Direct traded emissions total', 'Scenario'] = 'Balanced pathway'
 
+    # additional demand gas
+    ccs_df = df.loc[df['Technology Type'] == 'CCS'].copy()
+    year_of_implementation = ccs_df['Year of Implementation']
+    for y in YEARS:
+        ccs_df[f'Gas use after implementation {y}'] = ccs_df[f'Total natural gas use (GWh) {y}'].copy()
+        ccs_df.loc[y < year_of_implementation, f'Gas use after implementation {y}'] = 0
+        ccs_df[f'Gas use after implementation {y}'] *= ccs_df['Abatement Rate']
+        agg_df.loc['Additional demand gas', y] = ccs_df[f'Gas use after implementation {y}'].sum() * 0.001
+    agg_df.loc['Additional demand gas', 'Aggregate Variable'] = 'Additional demand gas'
+    agg_df.loc['Additional demand gas', 'Variable Unit'] = 'TWh'
+    agg_df.loc['Additional demand gas', 'Scenario'] = 'Balanced pathway'
+
     # fill some missing stuff
     agg_df['Country'] = 'United Kingdom'
     agg_df['Sector'] = sector
