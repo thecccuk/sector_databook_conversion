@@ -176,7 +176,10 @@ def aggregate_timeseries(df, **kwargs):
 def sd_measure_level(df, args_list):
     sd_df = pd.DataFrame(columns=SD_COLUMNS)
     for kwargs in args_list:
-        sd_df = pd.concat([sd_df, aggregate_timeseries(df, **kwargs)])
+        if sd_df.empty:
+            sd_df = aggregate_timeseries(df, **kwargs)
+        else:
+            sd_df = pd.concat([sd_df, aggregate_timeseries(df, **kwargs)])
     assert not sd_df.duplicated().any()
     return sd_df
 
