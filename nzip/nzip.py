@@ -1,14 +1,20 @@
 import pandas as pd
 from thefuzz import process
 
-
+# modelling years
 START_YEAR = 2021
 END_YEAR = 2050
 YEARS = list(range(START_YEAR, END_YEAR+1))
+
+# some constants
 DEVOLVED_AUTHS = ['United Kingdom', 'Scotland', 'Wales', 'Northern Ireland']
 GASES = ['CARBON', 'CH4', 'N2O']
 SD_COLUMNS = ['Measure ID', 'Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
-CATEGORIES = ['Dispersed or Cluster Site', 'Process']#, 'Traded / non-traded']
+CATEGORIES = ['Dispersed or Cluster Site', 'Process', 'Selected Option']#, 'Traded / non-traded']
+
+# compute the discount factor for each year as 1/(1+r)^y
+SOCIAL_DISCOUNT_RATE = 0.035 # 3.5%
+DISCOUNT_FACTORS = {y: 1/(1+SOCIAL_DISCOUNT_RATE)**y for y in YEARS}
 
 SD_COLUMNS = SD_COLUMNS[:4] + [f'Category{i+2}: {c}' for i, c in enumerate(CATEGORIES, 1)] + SD_COLUMNS[4:]
 SD_COLUMNS += YEARS
@@ -88,19 +94,71 @@ def load_nzip(nzip_path: str, sector_map_path: str, sector: str):
     fix_numeric_cols += [f'Total AM costs (£m) {y}' for y in YEARS]
     fix_numeric_cols += [f'AM opex (£m) {y}' for y in YEARS]
     fix_numeric_cols += [f'AM fuel costs (£m) {y}' for y in YEARS]
+    fix_numeric_cols += [f'Cost Differential (£m) {y}' for y in YEARS]
+    fix_numeric_cols += [f'Total direct emissions abated (MtCO2e) {y}' for y in YEARS]
+    fix_numeric_cols += [f'Total indirect emissions abated (MtCO2e) {y}' for y in YEARS]
     for col in fix_numeric_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
     # any NaN (not a number) values are set to 0
     df = df.fillna(0)
 
-    # add capex and opex cols
-    for y in range(START_YEAR, END_YEAR+1):
+    # manually drop NRMM subsector
+    df = df.loc[df['CCC Subsector'] != 'Non-road mobile machinery']
+
+    return df.copy()
+
+def add_cols(df):
+    """
+    Do some intermediate calculations and add some columns to the dataframe.
+
+    This is used for the following variables:
+    - Additional capital expenditure
+    - Additional operational expenditure
+    - Additional demand final non bio
+    - Low carbon costs
+    - Abatement cost new unit
+    - Abatement cost average measure
+    """
+    # add costs
+    for y in YEARS:
+        # additional capex and opex are calculated as the difference between the AM and counterfactual costs
         df[f'capex {y}'] = df[f'AM capex (£m) {y}'] - df[f'Counterfactual capex (£m) {y}']
         df[f'opex {y}'] = df[f'AM opex (£m) {y}'] + df[f'AM fuel costs (£m) {y}'] - (df[f'Counterfactual opex (£m) {y}'] + df[f'Counterfactual fuel costs (£m) {y}'])
 
-    # manually drop NRMM subsector
-    df = df.loc[df['CCC Subsector'] != 'Non-road mobile machinery']
+        # low carbon costs are calculated as follows:
+        # 1. if the year of implementation is less than the year in question, the costs are 0
+        # 2. otherwise, the costs are the same as the total AM capex and opex columns
+        df[f'capex low carbon {y}'] = df[f'AM capex (£m) {y}'].copy()
+        df.loc[df['Year of Implementation'] < y, f'capex low carbon {y}'] = 0
+        df[f'opex low carbon {y}'] = df[f'AM opex (£m) {y}'].copy()
+        df.loc[df['Year of Implementation'] < y, f'opex low carbon {y}'] = 0
+    
+        # additional demand final non bio, calculated as follows:
+        # 1. based on the process/sector, we know the fraction of non bio waste
+        # 2. we multiply this by the total solid fuel use to get the total non bio waste
+        # 3. we then subtract the post REEE total non bio waste to get the change in non bio waste before and after REEE
+        non_bio_waste_dict = {'Kiln - Cement': 0.23, 'Kiln - Lime': 0.23, 'Incinerators': 1.0, 'Other Chemicals': 0.54}
+        frac_bio_waste = df['Process'].copy().map(non_bio_waste_dict).fillna(0)
+        frac_bio_waste.loc[df['Element_sector'] == 'Other Chemicals'] = non_bio_waste_dict['Other Chemicals']
+        df[f'total non bio waste {y}'] = df[f'Total solid fuel use (GWh) {y}'] * frac_bio_waste
+        df[f'post REEE total non bio waste {y}'] = df[f'Post REEE baseline in solid fuel use (GWh) {y}'] * frac_bio_waste
+        df[f'Change in non bio waste {y}'] = df[f'total non bio waste {y}'] - df[f'post REEE total non bio waste {y}']
+        
+        # Abatement cost new unit: cost differential in each year divided by total emissions abated in each year
+        abatement = df[f'Total direct emissions abated (MtCO2e) {y}'] + df[f'Total indirect emissions abated (MtCO2e) {y}']
+        cost = df[f'Cost Differential (£m) {y}']
+        
+        df[f'total emissions abated {y}'] = abatement
+        df[f'cost differential {y}'] = cost
+
+        # Abatement cost average measure: cumulative cost differential divided by cumulative total emissions abated
+        if y == START_YEAR:
+            df[f'cum cost differential {y}'] = cost
+            df[f'cum total emissions abated {y}'] = abatement
+        else:
+            df[f'cum cost differential {y}'] = df[f'cum cost differential {y-1}'] + cost
+            df[f'cum total emissions abated {y}'] = df[f'cum total emissions abated {y-1}'] + abatement
 
     return df
 
@@ -180,6 +238,28 @@ def sd_measure_level(df, args_list):
             sd_df = aggregate_timeseries(df, **kwargs)
         else:
             sd_df = pd.concat([sd_df, aggregate_timeseries(df, **kwargs)])
+
+    # get some extra costs
+    cost = sd_df['Measure Variable'] == f'cost differential'
+    abated = sd_df['Measure Variable'] == f'total emissions abated'
+    # divide numeric columns
+    sd_df.loc[cost, YEARS] /= sd_df.loc[abated, YEARS]
+    sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost new unit'
+    sd_df = sd_df.loc[~abated]
+
+    # now do the same for the cumulative columns
+    cost = sd_df['Measure Variable'] == f'cum cost differential'
+    abated = sd_df['Measure Variable'] == f'cum total emissions abated'
+    sd_df.loc[cost, YEARS] /= sd_df.loc[abated, YEARS]
+    sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost average measure'
+    sd_df = sd_df.loc[~abated]
+
+    #df[f'Abatement cost new unit {y}'] = (cost / abatement).fillna(0)
+    #assert df.loc[df['Year of Implementation'] > y, f'Abatement cost new unit {y}'].sum() == 0
+    #df[f'Abatement cost average measure {y}'] = (df[f'cum cost differential {y}'] / df[f'cum total emissions abated {y}']).fillna(0)
+    #assert df.loc[df['Year of Implementation'] > y, f'Abatement cost average measure {y}'].sum() == 0
+
+
     assert not sd_df.duplicated().any()
     return sd_df
 
@@ -194,6 +274,8 @@ def baseline_from_measure_level(df):
     return bl_df
 
 def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
+    df = df.copy()
+
     # create a dataframe to store the aggregate results
     agg_df = pd.DataFrame(columns=['Scenario', 'Country', 'Sector', 'Aggregate Variable', 'Variable Unit'] + list(range(START_YEAR, END_YEAR+1)))
 
