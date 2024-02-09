@@ -134,9 +134,13 @@ def sector_databook_format(df, variable_name, variable_unit):
 
 def aggregate_timeseries_country(df, timeseries, variable_name, variable_unit, weight_col=None, country='United Kingdom', scale=None):
 
+    if country != 'United Kingdom':
+        # filter to rows for the given country
+        df = df.loc[df['Country'] == country].copy()
+
     # get the emissions time series columns
-    total_emissions_cols = [f'{timeseries} {y}' for y in range(START_YEAR, END_YEAR+1)]
-    emissions_cols = list(range(START_YEAR, END_YEAR+1))
+    total_emissions_cols = [f'{timeseries} {y}' for y in YEARS]
+    emissions_cols = YEARS
     df[emissions_cols] = df[total_emissions_cols].copy()
 
     # multiply by another column and/or then scale by a fixed value
