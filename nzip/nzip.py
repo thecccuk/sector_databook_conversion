@@ -163,7 +163,7 @@ def aggregate_timeseries_country(df, timeseries, variable_name, variable_unit, w
     df = sector_databook_format(agg_emissions_df, variable_name, variable_unit)
 
     # drop rows where each year is 0
-    df = df.loc[(df[YEARS] != 0).any(axis=1)]
+    #df = df.loc[(df[YEARS] != 0).any(axis=1)]
 
     return df
 
