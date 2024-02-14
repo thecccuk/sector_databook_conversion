@@ -245,21 +245,23 @@ def sd_measure_level(df, args_list, drop_not_implemented=False):
         else:
             sd_df = pd.concat([sd_df, aggregate_timeseries(df, **kwargs)])
 
-    # get some extra costs
+    # compute extra costs:
+
+    # compute "Abatement cost new unit" as:
+    # the "cost differential" in a given year divided by "total emissions abated" in that year
     cost = sd_df['Measure Variable'] == f'cost differential'
     abated = sd_df['Measure Variable'] == f'total emissions abated'
-
-    # divide numeric columns
     sd_df.loc[cost, YEARS] = (sd_df.loc[cost, YEARS] / sd_df.loc[abated, YEARS]).fillna(0)
     sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost new unit'
-    sd_df = sd_df.loc[~abated]
+    sd_df = sd_df.loc[~abated] # remove intermediate rows used in the calculation
 
-    # now do the same for the cumulative columns
+    # compute "Abatement cost average measure" as:
+    # the cumulative "cost differential" divided by the cumulative "total emissions abated"
     cost = sd_df['Measure Variable'] == f'cum cost differential'
     abated = sd_df['Measure Variable'] == f'cum total emissions abated'
     sd_df.loc[cost, YEARS] = (sd_df.loc[cost, YEARS] / sd_df.loc[abated, YEARS]).fillna(0)
     sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost average measure'
-    sd_df = sd_df.loc[~abated]
+    sd_df = sd_df.loc[~abated] # remove intermediate rows used in the calculation
 
     assert not sd_df.duplicated().any()
     return sd_df
