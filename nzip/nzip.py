@@ -11,6 +11,7 @@ DEVOLVED_AUTHS = ['United Kingdom', 'Scotland', 'Wales', 'Northern Ireland']
 GASES = ['CARBON', 'CH4', 'N2O']
 SD_COLUMNS = ['Measure ID', 'Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
 CATEGORIES = ['Dispersed or Cluster Site', 'Process', 'Selected Option']#, 'Traded / non-traded']
+SCENARIO = 'Balanced pathway'
 
 # compute the discount factor for each year as 1/(1+r)^y
 SOCIAL_DISCOUNT_RATE = 0.035 # 3.5%
@@ -148,7 +149,6 @@ def add_cols(df):
         # Abatement cost new unit: cost differential in each year divided by total emissions abated in each year
         abatement = df[f'Total direct emissions abated (MtCO2e) {y}'] + df[f'Total indirect emissions abated (MtCO2e) {y}']
         cost = df[f'Cost Differential (£m) {y}']
-        
         df[f'total emissions abated {y}'] = abatement
         df[f'cost differential {y}'] = cost
 
@@ -231,7 +231,13 @@ def aggregate_timeseries(df, **kwargs):
     df = pd.concat(dfs)
     return df
 
-def sd_measure_level(df, args_list):
+def sd_measure_level(df, args_list, drop_not_implemented=False):
+    
+    # for non-baseline data, we can drop rows that have an implementation year >2060
+    if drop_not_implemented:
+        df = df.loc[df['Year of Implementation'] < 2060].copy()
+
+    # process measure level data
     sd_df = pd.DataFrame(columns=SD_COLUMNS)
     for kwargs in args_list:
         if sd_df.empty:
@@ -242,28 +248,24 @@ def sd_measure_level(df, args_list):
     # get some extra costs
     cost = sd_df['Measure Variable'] == f'cost differential'
     abated = sd_df['Measure Variable'] == f'total emissions abated'
+
     # divide numeric columns
-    sd_df.loc[cost, YEARS] /= sd_df.loc[abated, YEARS]
+    sd_df.loc[cost, YEARS] = (sd_df.loc[cost, YEARS] / sd_df.loc[abated, YEARS]).fillna(0)
     sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost new unit'
     sd_df = sd_df.loc[~abated]
 
     # now do the same for the cumulative columns
     cost = sd_df['Measure Variable'] == f'cum cost differential'
     abated = sd_df['Measure Variable'] == f'cum total emissions abated'
-    sd_df.loc[cost, YEARS] /= sd_df.loc[abated, YEARS]
+    sd_df.loc[cost, YEARS] = (sd_df.loc[cost, YEARS] / sd_df.loc[abated, YEARS]).fillna(0)
     sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost average measure'
     sd_df = sd_df.loc[~abated]
-
-    #df[f'Abatement cost new unit {y}'] = (cost / abatement).fillna(0)
-    #assert df.loc[df['Year of Implementation'] > y, f'Abatement cost new unit {y}'].sum() == 0
-    #df[f'Abatement cost average measure {y}'] = (df[f'cum cost differential {y}'] / df[f'cum total emissions abated {y}']).fillna(0)
-    #assert df.loc[df['Year of Implementation'] > y, f'Abatement cost average measure {y}'].sum() == 0
-
 
     assert not sd_df.duplicated().any()
     return sd_df
 
 def baseline_from_measure_level(df):
+    """Reformat a measure level table to match the baseline formatting."""
     cols = ['Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
     cols = cols[:4] + [f'Category{i+2}: {c}' for i, c in enumerate(CATEGORIES, 1)] + cols[4:]
     bl_df = df.groupby(cols).sum(numeric_only=True)
@@ -272,6 +274,50 @@ def baseline_from_measure_level(df):
     bl_df = bl_df.drop(columns=['Measure Name'])
     assert not bl_df.duplicated().any()
     return bl_df
+
+def get_additional_demand_agg(df, agg_df, fuel, fuel_out=None, tech='CCS'):
+    """
+    Get the aggregate additional demand for a given fuel.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The raw NZIP dataframe.
+    agg_df : pd.DataFrame
+        The aggregate dataframe to add the results to.
+    fuel : str
+        The name of the fuel to get the additional demand for (nzip column name).
+    fuel_out : str
+        The name of the fuel to use in the aggregate dataframe (SD column name).
+        If not provided, assume this is the same as fuel.
+    tech : str
+        The technology type to filter on.
+    """
+    # if fuel_out is not provided, assume it is the same as fuel
+    if fuel_out is None:
+        fuel_out = fuel
+
+    # only consider rows for the given technology type
+    ccs_df = df.loc[df['Technology Type'] == tech].copy()
+    year_of_implementation = ccs_df['Year of Implementation']
+
+    # for each year
+    for y in YEARS:
+        # compute the total fuel use after the year of implementation, and multiply by the abatement rate
+        ccs_df[f'{fuel} use after implementation {y}'] = ccs_df[f'Total {fuel} use (GWh) {y}'].copy()
+        ccs_df.loc[y < year_of_implementation, f'{fuel} use after implementation {y}'] = 0
+        
+        # updated guidance from CB team: don't multiply by the CCS capture rate
+        #ccs_df[f'{fuel} use after implementation {y}'] *= ccs_df['Abatement Rate']
+        
+        # sum all rows and convert from GWh to TWh
+        agg_df.loc[f'Additional demand {fuel_out} abated', y] = ccs_df[f'{fuel} use after implementation {y}'].sum() * 0.001
+    
+    agg_df.loc[f'Additional demand {fuel_out} abated', 'Aggregate Variable'] = f'Additional demand {fuel_out} abated'
+    agg_df.loc[f'Additional demand {fuel_out} abated', 'Variable Unit'] = 'TWh'
+    agg_df.loc[f'Additional demand {fuel_out} abated', 'Scenario'] = SCENARIO
+
+    return agg_df
 
 def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
     df = df.copy()
@@ -309,7 +355,7 @@ def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
     agg_df.loc['Direct emissions total'] = total_pathway_emissions
     agg_df.loc['Direct emissions total', 'Aggregate Variable'] = 'Direct emissions total'
     agg_df.loc['Direct emissions total', 'Variable Unit'] = 'MtCO2e'
-    agg_df.loc['Direct emissions total', 'Scenario'] = 'Balanced pathway'
+    agg_df.loc['Direct emissions total', 'Scenario'] = SCENARIO
 
     # traded
     agg_df.loc['Baseline traded emissions total'] = total_baseline_emissions_traded
@@ -320,20 +366,13 @@ def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
     agg_df.loc['Direct traded emissions total'] = total_pathway_emissions_traded
     agg_df.loc['Direct traded emissions total', 'Aggregate Variable'] = 'Direct traded emissions total'
     agg_df.loc['Direct traded emissions total', 'Variable Unit'] = 'MtCO2e'
-    agg_df.loc['Direct traded emissions total', 'Scenario'] = 'Balanced pathway'
+    agg_df.loc['Direct traded emissions total', 'Scenario'] = SCENARIO
 
-    # additional demand gas
-    ccs_df = df.loc[df['Technology Type'] == 'CCS'].copy()
-    year_of_implementation = ccs_df['Year of Implementation']
-    for y in YEARS:
-        ccs_df[f'Gas use after implementation {y}'] = ccs_df[f'Total natural gas use (GWh) {y}'].copy()
-        ccs_df.loc[y < year_of_implementation, f'Gas use after implementation {y}'] = 0
-        ccs_df[f'Gas use after implementation {y}'] *= ccs_df['Abatement Rate']
-        agg_df.loc['Additional demand gas', y] = ccs_df[f'Gas use after implementation {y}'].sum() * 0.001
-    agg_df.loc['Additional demand gas', 'Aggregate Variable'] = 'Additional demand gas'
-    agg_df.loc['Additional demand gas', 'Variable Unit'] = 'TWh'
-    agg_df.loc['Additional demand gas', 'Scenario'] = 'Balanced pathway'
-
+    # additional demand gas, petroleum, solid fuel
+    agg_df = get_additional_demand_agg(df, agg_df, 'natural gas', 'gas')
+    agg_df = get_additional_demand_agg(df, agg_df, 'petroleum')
+    agg_df = get_additional_demand_agg(df, agg_df, 'solid fuel')
+ 
     # fill some missing stuff
     agg_df['Country'] = 'United Kingdom'
     agg_df['Sector'] = sector
