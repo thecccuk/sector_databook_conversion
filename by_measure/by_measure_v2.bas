@@ -13,16 +13,16 @@
 
 ' Configuration
 ' -----------------------------------------------------------------------------------------------
-' Define configurable constants for easy modification and readability
-Const SRC_TITLE_ROW As Integer = 1       ' Row number where titles are located in source sheet
-Const DST_TITLE_ROW As Integer = 1       ' Row number where titles will be placed in destination sheet
-Const START_YEAR As Long = 2015          ' Starting year for the time series
-Const END_YEAR As Integer = 2050         ' Ending year for the time series
+' Configurable parameters for title row numbers, starting and ending years
+Const SRC_TITLE_ROW As Integer = 1 ' Row number where titles are located in source sheet
+Const DST_TITLE_ROW As Integer = 1 ' Row number where titles will be placed in destination sheet
+Const START_YEAR As Long = 2015    ' Starting year for the time series
+Const END_YEAR As Integer = 2050   ' Ending year for the time series
 
-' Constants for specific sheet names and sector
-Const SECTOR_NAME As String = "Waste"             ' Name of the sector being processed
+' Name of the sector being processed - this will be used to populate the "Sector" column in the output sheets
+Const SECTOR_NAME As String = "Waste"
 
-' Define pathway constants for categorizing data
+' Define the names of the pathways
 Const BASELINE As String = "Baseline"
 Const BALANCED As String = "Balanced Pathway"
 Const ADDITIONAL_ACTION As String = "Additional Action Pathway"
@@ -38,7 +38,7 @@ Private SRC_COL_VARIABLE_UNIT As Integer
 
 ' Initialize the above column indices
 Private Sub InitializeColumnIndices()
-    Dim src_ws As Worksheet; Set src_ws = ActiveSheet
+    Dim src_ws As Worksheet: Set src_ws = ActiveSheet
     SRC_COL_COUNTRY = get_index(src_ws, "Country")
     SRC_COL_SUBSECTOR = get_index(src_ws, "Subsector")
     SRC_COL_MEASURE_NAME = get_index(src_ws, "Measure Name")
@@ -62,7 +62,7 @@ Sub Main()
     InitializeColumnIndices
 
     ' Retrieve a reference to the source worksheet containing the data
-    Dim src_ws As Worksheet; Set src_ws = ActiveSheet
+    Dim src_ws As Worksheet: Set src_ws = ActiveSheet
 
     ' Check if the source sheet has all the required columns
     If Not check_source_sheet(src_ws) Then
