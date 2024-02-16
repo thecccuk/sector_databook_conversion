@@ -1,6 +1,16 @@
 ' Macro to convert data from the "By measure" sheets to the CB7 sector databook format
 ' Author: Sam Van Stroud
 
+' Description:
+' This macro is designed to convert data from the "By measure" sheets to the CB7 sector databook format.
+' To use the macro, navigate to the "By measure" sheet containing the data, and run the "Main" subroutine.
+' The macro will create new worksheets for each pathway (Baseline, Balanced Pathway, Additional Action Pathway),
+' and copy the data from the source sheet to the relevant output sheet based on the pathway specified in the "Pathway" column.
+
+' Assumptions:
+' 1. The source sheet contains the following columns: "Pathway", "Country", "Subsector", "Measure Name", "Measure Variable", "Variable Unit".
+' 2. The source sheet contains columns for each year in the time series, starting from START_YEAR as defined in the configuration section.
+
 ' Configuration
 ' -----------------------------------------------------------------------------------------------
 ' Define configurable constants for easy modification and readability
@@ -10,7 +20,6 @@ Const START_YEAR As Long = 2015          ' Starting year for the time series
 Const END_YEAR As Integer = 2050         ' Ending year for the time series
 
 ' Constants for specific sheet names and sector
-Const SOURCE_SHEET_NAME As String = "By measure"  ' Name of the source sheet
 Const SECTOR_NAME As String = "Waste"             ' Name of the sector being processed
 
 ' Define pathway constants for categorizing data
@@ -29,8 +38,7 @@ Private SRC_COL_VARIABLE_UNIT As Integer
 
 ' Initialize the above column indices
 Private Sub InitializeColumnIndices()
-    Dim src_ws As Worksheet
-    Set src_ws = Worksheets(SOURCE_SHEET_NAME)
+    Dim src_ws As Worksheet; Set src_ws = ActiveSheet
     SRC_COL_COUNTRY = get_index(src_ws, "Country")
     SRC_COL_SUBSECTOR = get_index(src_ws, "Subsector")
     SRC_COL_MEASURE_NAME = get_index(src_ws, "Measure Name")
@@ -44,15 +52,17 @@ Sub Main()
 
     ' Print a start message to the immediate window
     Debug.Print (vbNewLine & "START CONVERSION...")
+    
+    ' Disable screen updating, calculation, and events to improve performance
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     Application.EnableEvents = False
 
+    ' Initialize the column indices for the source sheet, to avoid repeated lookups
     InitializeColumnIndices
 
     ' Retrieve a reference to the source worksheet containing the data
-    Dim src_ws As Worksheet
-    Set src_ws = Worksheets(SOURCE_SHEET_NAME)
+    Dim src_ws As Worksheet; Set src_ws = ActiveSheet
 
     ' Check if the source sheet has all the required columns
     If Not check_source_sheet(src_ws) Then
@@ -63,11 +73,11 @@ Sub Main()
     ' Create a collection to hold references to the output sheets for each pathway
     Dim dst_wss As Collection
     Set dst_wss = New Collection
+
     ' Add new worksheets for each pathway to the collection
     dst_wss.Add create_sd_sheet(START_YEAR, END_YEAR, "Baseline data"), BASELINE
     dst_wss.Add create_sd_sheet(START_YEAR, END_YEAR, "BP Measure level data"), BALANCED
     dst_wss.Add create_sd_sheet(START_YEAR, END_YEAR, "AAP Measure level data"), ADDITIONAL_ACTION
-    dst_wss.Add create_sd_sheet(START_YEAR, END_YEAR, "Aggregate data"), "Aggregate"
 
     ' Initialize a collection to track the current row for data entry in each output sheet
     Dim dst_row As Collection
@@ -75,7 +85,6 @@ Sub Main()
     dst_row.Add DST_TITLE_ROW + 1, BASELINE
     dst_row.Add DST_TITLE_ROW + 1, BALANCED
     dst_row.Add DST_TITLE_ROW + 1, ADDITIONAL_ACTION
-    dst_row.Add DST_TITLE_ROW + 1, "Aggregate"
 
     ' Iterate through all the rows in the source sheet and copy the data to the output sheets
     Dim src_row As Range
@@ -83,13 +92,9 @@ Sub Main()
         Set dst_row = copy_row(src_row, src_ws, dst_wss, dst_row)
     Next src_row
 
-    ' Special handling for the baseline data: remove the "Measure ID" and "Measure Name" columns
+    ' Special handling for the baseline sheet: remove "Measure ID" and "Measure Name" columns and rename "Measure Variable" column
     RemoveColumnsFromSheet dst_wss(BASELINE)
-    RemoveColumnsFromSheet dst_wss("Aggregate")
-
-    ' Rename the "Measure Variable" column
     dst_wss(BASELINE).Cells(DST_TITLE_ROW, find_col(dst_wss(BASELINE).Rows(DST_TITLE_ROW), "Measure Variable").Column).Value = "Baseline Variable"
-    dst_wss("Aggregate").Cells(DST_TITLE_ROW, find_col(dst_wss("Aggregate").Rows(DST_TITLE_ROW), "Measure Variable").Column).Value = "Aggregate Variable"
 
     ' Autofit the columns in each output sheet for better presentation
     Dim ws As Worksheet
@@ -97,7 +102,7 @@ Sub Main()
         ws.Cells.EntireColumn.AutoFit
     Next ws
 
-    ' Print a completion message to the immediate window
+    ' Print a completion message to the immediate window and re-enable screen updating
     Application.ScreenUpdating = True
     Application.Calculation = xlCalculationAutomatic
     Application.EnableEvents = True
@@ -140,6 +145,8 @@ Function copy_row(src_row As Range, src_ws As Worksheet, dst_wss As Collection, 
     Set copy_row = dst_row
 End Function
 
+
+' Function to get the index of a column by name
 Function get_index(ws As Worksheet, columnName As String) As Integer
     Dim foundRange As Range
     Set foundRange = ws.Rows(SRC_TITLE_ROW).Find(What:=columnName, LookIn:=xlValues, LookAt:=xlWhole)
@@ -153,6 +160,7 @@ Function get_index(ws As Worksheet, columnName As String) As Integer
 End Function
 
 
+' Function to look up a value in a specific column by name and row index
 Function lookup(ws As Worksheet, columnName As String, rowIndex As Integer) As Variant
     Dim targetColumn As Range
     Set targetColumn = ws.Rows(SRC_TITLE_ROW).Find(What:=columnName, LookIn:=xlValues, LookAt:=xlWhole)
@@ -191,7 +199,6 @@ Function check_source_sheet(src_ws As Worksheet) As Boolean
 End Function
 
 
-
 ' Function to create a new worksheet with a specified name
 ' If a sheet with the same name exists, it returns that sheet instead
 Function create_new_sheet(name As String) As Worksheet
@@ -210,6 +217,7 @@ Function create_new_sheet(name As String) As Worksheet
     ws.Name = name
     Set create_new_sheet = ws
 End Function
+
 
 ' Function to create a new worksheet for sector databook
 ' Sets up the worksheet with predefined column headers and formatting
@@ -257,6 +265,7 @@ Function create_sd_sheet(startDate As Integer, endDate As Integer, name As Strin
     Set create_sd_sheet = ws
 End Function
 
+
 ' Function to find a specific column by name within a given range
 ' Raises an error if the column is not found
 Function find_col(cols As Range, col_name As String) As Range
@@ -273,6 +282,7 @@ Function find_col(cols As Range, col_name As String) As Range
     ' Raise a custom error if the column is not found
     Err.Raise 1000, Description:="Could not find column " & col_name
 End Function
+
 
 ' Remove the "Measure ID" and "Measure Name" columns from the given worksheet
 Function RemoveColumnsFromSheet(ws As Worksheet)
