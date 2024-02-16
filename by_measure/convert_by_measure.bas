@@ -3,7 +3,7 @@
 
 ' Description:
 ' This macro is designed to convert data from the "By measure" sheets to the CB7 sector databook format.
-' To use the macro, navigate to the "By measure" sheet containing the data, and run the "Main" subroutine.
+' To use the macro, navigate to the "By measure" sheet containing the data, and run the "ConvertByMeasureMain" subroutine.
 ' The macro will create new worksheets for each pathway (Baseline, Balanced Pathway, Additional Action Pathway),
 ' and copy the data from the source sheet to the relevant output sheet based on the pathway specified in the "Pathway" column.
 
@@ -48,7 +48,7 @@ End Sub
 
 ' ------------------------------------------------------------
 ' Main subroutine to initiate the data conversion process
-Sub Main()
+Sub ConvertByMeasureMain()
 
     ' Print a start message to the immediate window
     Debug.Print (vbNewLine & "START CONVERSION...")
