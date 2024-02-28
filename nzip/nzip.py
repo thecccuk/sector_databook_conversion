@@ -190,7 +190,7 @@ def sector_databook_format(df, variable_name, variable_unit):
     df = df[SD_COLUMNS]
     return df
 
-def aggregate_timeseries_country(df, timeseries, variable_name, variable_unit, weight_col=None, country='United Kingdom', scale=None):
+def aggregate_timeseries_country(df, timeseries, variable_name, variable_unit, weight_col=None, country='United Kingdom', scale=None, measure=None):
 
     if country != 'United Kingdom':
         # filter to rows for the given country
@@ -208,8 +208,11 @@ def aggregate_timeseries_country(df, timeseries, variable_name, variable_unit, w
         df[emissions_cols] = df[emissions_cols] * scale
 
     # map some technology types to a new name
-    tech_map = {'Blue Hydrogen': 'Hydrogen', 'Green Hydrogen': 'Hydrogen', 'Electric': 'Electrification'}
-    df['Measure Technology'] = df['Technology Type'].replace(tech_map)
+    if not measure:
+        tech_map = {'Blue Hydrogen': 'Hydrogen', 'Green Hydrogen': 'Hydrogen', 'Electric': 'Electrification'}
+        df['Measure Technology'] = df['Technology Type'].replace(tech_map)
+    else:
+        df['Measure Technology'] = measure
         
     # sum rows corresponding to the same measure
     agg_emissions_df = df.groupby(['CCC Subsector', 'Measure Technology'] + CATEGORIES)[emissions_cols].sum()
