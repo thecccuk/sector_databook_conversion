@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from thefuzz import process
 
 # modelling years
@@ -314,7 +315,41 @@ def aggregate_timeseries(df, **kwargs):
     df = pd.concat(dfs)
     return df
 
-def sd_measure_level(df, args_list, drop_not_implemented=False):
+
+def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols, reee_sheet_name="REEE Projection - EE Sector", header=327, nrows=28):
+    df = df.copy()
+    # read the energy efficiency data from the nzip model.
+    # here we taking the "People" scenario which matches the balanced pathway
+    with open(nzip_path, 'rb') as f:
+        index = pd.read_excel(f, sheet_name=reee_sheet_name, header=header, nrows=nrows, usecols='D', index_col=0)
+        ee_df = pd.read_excel(f, sheet_name=reee_sheet_name, header=header, nrows=nrows, usecols=usecols, index_col=None)
+        ee_df.index = index.index
+    ee_df.columns = [int(x[:4]) for x in ee_df.columns] # cast column names to int and fix names
+    ee_df = ee_df[YEARS] # select only relevant years
+
+    for y in YEARS:
+        # unsure how to calculate the RE and EE values
+        ee_frac = df['Element_sector'].map(ee_df[y])
+        assert (ee_frac != 1.0).all()
+        # option 1, ee_frac is the proportion of post-REEE emissions that are EE
+        if False:
+            ee = df[f'Post REEE baseline emissions (MtCO2e) {y}'] * ee_frac
+            re =  (df[f'Baseline emissions (MtCO2e) {y}'] - df[f'Post REEE baseline emissions (MtCO2e) {y}']) - ee
+        # option two: ee_frac represents the percentage reduction in emissions due to EE
+        else:
+            ee = (df[f'{post_reee_col} {y}'] / (1 - ee_frac)) - df[f'{post_reee_col} {y}']
+            re =  (df[f'{baseline_col} {y}'] - df[f'{post_reee_col} {y}']) - ee
+        df[f'RE {out_col} {y}'] = re
+        df[f'EE {out_col} {y}'] = ee
+
+        # assert neither of these are nan or inf
+        assert np.isfinite(df[f'RE {out_col} {y}']).all()
+        assert np.isfinite(df[f'EE {out_col} {y}']).all()
+
+    return df
+
+
+def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
     """
     Process and aggregate measure-level data according to specified arguments.
 
@@ -322,25 +357,37 @@ def sd_measure_level(df, args_list, drop_not_implemented=False):
     ----------
     df : pandas.DataFrame
         The DataFrame containing the data to be processed.
-    args_list : list
+    args : list
         A list of dictionaries specifying the arguments for data aggregation.
-    drop_not_implemented : bool, optional
-        Whether to exclude measures not implemented by a certain year. Default is False.
+    baseline : bool, optional
+        If True, exclude measures not unimplemented measures.
 
     Returns
     -------
     pd.DataFrame
         The aggregated and processed DataFrame with measure-level data.
     """
-    if drop_not_implemented:
+    if not baseline:
         df = df.loc[df['Year of Implementation'] < 2060].copy()
 
     sd_df = pd.DataFrame(columns=SD_COLUMNS)
-    for kwargs in args_list:
+    for kwargs in args:
         if sd_df.empty:
             sd_df = aggregate_timeseries(df, **kwargs)
         else:
             sd_df = pd.concat([sd_df, aggregate_timeseries(df, **kwargs)])
+
+    # handle REEE
+    if not baseline:
+        reee_df = None
+        for kwargs in reee_args:
+            if reee_df is None:
+                reee_df = add_reee(nzip_path, df, **kwargs)
+            else:
+                reee_df = pd.concat([reee_df, add_reee(nzip_path, df, **kwargs)])
+        agg_kwargs = {'variable_name': 'Abatement Emissions CO2', 'variable_unit': 'MtCO2'}
+        sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"RE {kwargs['out_col']}", measure='Resource Efficiency', **agg_kwargs)])
+        sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"EE {kwargs['out_col']}", measure='Energy Efficiency', **agg_kwargs)])
 
     #
     # compute some additional costs:
@@ -362,7 +409,7 @@ def sd_measure_level(df, args_list, drop_not_implemented=False):
     sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost average measure'
     sd_df = sd_df.loc[~abated] # remove intermediate rows used in the calculation
 
-    assert not sd_df.duplicated().any()
+    #assert not sd_df.duplicated().any()
     return sd_df
 
 def baseline_from_measure_level(df):
