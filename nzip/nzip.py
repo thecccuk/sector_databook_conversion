@@ -10,29 +10,41 @@ YEARS = list(range(START_YEAR, END_YEAR+1))
 DEVOLVED_AUTHS = ['United Kingdom', 'Scotland', 'Wales', 'Northern Ireland']
 GASES = ['CARBON', 'CH4', 'N2O']
 SD_COLUMNS = ['Measure ID', 'Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
-CATEGORIES = ['Dispersed or Cluster Site', 'Process', 'Selected Option']#, 'Traded / non-traded']
+CATEGORIES = ['Dispersed or Cluster Site', 'Process', 'Selected Option']
 SCENARIO = 'Balanced pathway'
 
 # compute the discount factor for each year as 1/(1+r)^y
-SOCIAL_DISCOUNT_RATE = 0.035 # 3.5%
+SOCIAL_DISCOUNT_RATE = 0.035  # 3.5%
 DISCOUNT_FACTORS = {y: 1/(1+SOCIAL_DISCOUNT_RATE)**y for y in YEARS}
 
+# Update SD_COLUMNS to include dynamic categories based on the defined CATEGORIES list.
 SD_COLUMNS = SD_COLUMNS[:4] + [f'Category{i+2}: {c}' for i, c in enumerate(CATEGORIES, 1)] + SD_COLUMNS[4:]
 SD_COLUMNS += YEARS
 
-
 def get_subsectors(sector_map: pd.DataFrame, ccc_sector: str):
     """
-    Get the subsectors (EE sectors) relevant for a given CCC sector.
+    Retrieve EE subsectors and their mapping to a given CCC sector from a sector mapping DataFrame.
 
     Parameters
     ----------
     sector_map : pd.DataFrame
-        The sector mapping to use.
+        DataFrame containing sector mappings.
     ccc_sector : str
-        The CCC sector to get the subsectors for.
+        The CCC sector for which subsectors are to be retrieved.
+
+    Returns
+    -------
+    subsectors : list
+        List of EE subsectors for the specified CCC sector.
+    ee_sector_to_subsector : dict
+        Dictionary mapping EE sectors to CCC subsectors.
+
+    Raises
+    ------
+    ValueError
+        If the specified CCC sector is not present in the sector map.
     """
-    # check the ccc sector is valid
+    # Validate the CCC sector against the sector map.
     if ccc_sector not in sector_map['CCC Sector'].unique():
         raise ValueError(f'Invalid CCC Sector: {ccc_sector}, must be one of {sector_map["CCC Sector"].unique()}')
 
@@ -49,27 +61,30 @@ def get_subsectors(sector_map: pd.DataFrame, ccc_sector: str):
 
 def load_nzip(nzip_path: str, sector_map_path: str, sector: str):
     """
-    Load NZIP outputs and filter rows based on CCC sector.
-    Some initial data cleaning is also applied.
+    Load and preprocess NZIP output data for a specified CCC sector.
 
     Parameters
     ----------
     nzip_path : str
-        The path to the NZIP output workbook.
+        Path to the NZIP output workbook.
     sector_map_path : str
-        The path to the NZIP sector definitions csv file.
+        Path to the sector definitions CSV file.
     sector : str
-        CCC sector to load. Must be one of 'Industry', 'Fuel Supply', or 'Waste'.
-    """
+        The CCC sector for which data is to be loaded.
 
-    # get the mapping from ee sector to ccc subsector
+    Returns
+    -------
+    pd.DataFrame
+        The processed DataFrame containing NZIP data filtered and adjusted for the specified sector.
+    """
     sector_map_df = pd.read_csv(sector_map_path)
     
-    # read the NZIP output workbook. this can take a minute or two, we could speed it up by first converting it to a csv
+    # Load the NZIP output, specifying the sheet and columns to be used.
+    # Warning: this is a bit slow
     with open(nzip_path, 'rb') as f:
         df = pd.read_excel(f, sheet_name='CCC Outputs', header=10, usecols='F:CWV')
 
-    # check that the ee sectors are consistent
+    # Ensure the EE sectors from the map and NZIP output match, printing discrepancies.
     ee_sectors_from_map = set(sector_map_df['EE Sector'])
     ee_sectors_from_nzip = set(df['Element_sector'])
     if ee_sectors_from_map != ee_sectors_from_nzip:
@@ -77,20 +92,15 @@ def load_nzip(nzip_path: str, sector_map_path: str, sector: str):
         in_nzip_not_map = ee_sectors_from_nzip - ee_sectors_from_map
         print(f'EE sectors in map but not NZIP: {in_map_not_nzip}, EE sectors in NZIP but not map: {in_nzip_not_map}')
 
-    # get the subsectors relevant for the given sector
+    # Filter the DataFrame based on the relevant subsectors for the given CCC sector.
     subsectors, subsector_map = get_subsectors(sector_map_df, sector)
-
-    # select relevant rows based on the sector
     df = df.loc[df['Element_sector'].isin(subsectors)]
-
-    # add a column for the CCC subsector
     df['CCC Subsector'] = df['Element_sector'].map(subsector_map)
 
-    # fix string columns which have some empty cells
+    # Data cleaning steps for string and numeric columns, including handling of NaN values and specific subsector exclusions.
     df['Selected Option'] = df['Selected Option'].fillna('')
     df['Technology Type'] = df['Technology Type'].fillna('')
 
-    # fix some numeric columns which have some non-numeric values (these values will be set to 0 later)
     fix_numeric_cols = ['% CARBON Emissions', '% CH4 Emissions', '% N2O Emissions']
     fix_numeric_cols += [f'Total AM costs (£m) {y}' for y in YEARS]
     fix_numeric_cols += [f'AM opex (£m) {y}' for y in YEARS]
@@ -100,18 +110,14 @@ def load_nzip(nzip_path: str, sector_map_path: str, sector: str):
     fix_numeric_cols += [f'Total indirect emissions abated (MtCO2e) {y}' for y in YEARS]
     for col in fix_numeric_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    # any NaN (not a number) values are set to 0
     df = df.fillna(0)
-
-    # manually drop NRMM subsector
     df = df.loc[df['CCC Subsector'] != 'Non-road mobile machinery']
 
     return df.copy()
 
 def add_cols(df):
     """
-    Do some intermediate calculations and add some columns to the dataframe.
+    Perform calculations and add additional columns to the DataFrame.
 
     This is used for the following variables:
     - Additional capital expenditure
@@ -120,10 +126,20 @@ def add_cols(df):
     - Low carbon costs
     - Abatement cost new unit
     - Abatement cost average measure
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame to be modified.
+
+    Returns
+    -------
+    pd.DataFrame
+        The modified DataFrame with additional calculated columns.
     """
-    # add costs
+    # Calculations for capex, opex, low carbon costs, additional demand, and abatement costs.
+    # These include differences between actual and counterfactual expenditures, and adjustments based on implementation year.
     for y in YEARS:
-        # additional capex and opex are calculated as the difference between the AM and counterfactual costs
         df[f'capex {y}'] = df[f'AM capex (£m) {y}'] - df[f'Counterfactual capex (£m) {y}']
         df[f'opex {y}'] = df[f'AM opex (£m) {y}'] + df[f'AM fuel costs (£m) {y}'] - (df[f'Counterfactual opex (£m) {y}'] + df[f'Counterfactual fuel costs (£m) {y}'])
 
@@ -164,20 +180,43 @@ def add_cols(df):
 
 def col_search(df, search_string, limit=5):
     """
-    Search the columns of a dataframe for a string using thefuzz.
+    Search for a string within the column names of a DataFrame using fuzzy matching.
 
     Parameters
     ----------
     df : pandas.DataFrame
-        The dataframe to search.
+        The DataFrame whose columns are to be searched.
     search_string : str
-        The string to search for.
-    limit : int
-        The maximum number of results to return.
+        The string to search for within the column names.
+    limit : int, optional
+        The maximum number of matches to return.
+
+    Returns
+    -------
+    list
+        A list of tuples containing the matched column names and their corresponding scores, limited by the specified count.
     """
+    # Use fuzzy matching to find the best matches for the search_string in the DataFrame's column names.
     return process.extract(search_string, df.columns.astype(str), limit=limit)
 
 def sector_databook_format(df, variable_name, variable_unit):
+    """
+    Format the DataFrame according to the sector databook specifications.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The DataFrame to be formatted.
+    variable_name : str
+        The name of the variable for the "Measure Variable" column.
+    variable_unit : str
+        The unit of measurement for the "Variable Unit" column.
+
+    Returns
+    -------
+    pd.DataFrame
+        The formatted DataFrame with specific columns adjusted to match sector databook requirements.
+    """
     df = df.reset_index()
     df['Measure ID'] = ''
     df['Sector'] = 'Industry'
@@ -191,7 +230,33 @@ def sector_databook_format(df, variable_name, variable_unit):
     return df
 
 def aggregate_timeseries_country(df, timeseries, variable_name, variable_unit, weight_col=None, country='United Kingdom', scale=None, measure=None):
+    """
+    Aggregate timeseries data for a specific country and variable, optionally applying weighting and scaling.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The DataFrame containing timeseries data.
+    timeseries : str
+        The name of the timeseries variable.
+    variable_name : str
+        The name of the variable to be used in the aggregation.
+    variable_unit : str
+        The unit for the aggregated variable.
+    weight_col : str, optional
+        The column name to use for weighting the data. Default is None.
+    country : str, optional
+        The country for which data is aggregated. Default is 'United Kingdom'.
+    scale : float, optional
+        A scaling factor to apply to the data. Default is None.
+    measure : str, optional
+        A specific measure to filter the data by. Default is None.
+
+    Returns
+    -------
+    pd.DataFrame
+        The aggregated DataFrame with timeseries data summed up per specified parameters.
+    """
     if country != 'United Kingdom':
         # filter to rows for the given country
         df = df.loc[df['Country'] == country].copy()
@@ -229,18 +294,47 @@ def aggregate_timeseries_country(df, timeseries, variable_name, variable_unit, w
     return df
 
 def aggregate_timeseries(df, **kwargs):
-    # go through each country and combine the results
+    """
+    Aggregate timeseries data for all countries specified in the DEVOLVED_AUTHS list.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The DataFrame containing timeseries data.
+    **kwargs
+        Additional keyword arguments to be passed to `aggregate_timeseries_country`.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing the aggregated timeseries data for all specified countries.
+    """
+    # Aggregate data for each country in DEVOLVED_AUTHS and combine the results.
     dfs = [aggregate_timeseries_country(df, country=country, **kwargs) for country in DEVOLVED_AUTHS]
     df = pd.concat(dfs)
     return df
 
 def sd_measure_level(df, args_list, drop_not_implemented=False):
-    
-    # for non-baseline data, we can drop rows that have an implementation year >2060
+    """
+    Process and aggregate measure-level data according to specified arguments.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The DataFrame containing the data to be processed.
+    args_list : list
+        A list of dictionaries specifying the arguments for data aggregation.
+    drop_not_implemented : bool, optional
+        Whether to exclude measures not implemented by a certain year. Default is False.
+
+    Returns
+    -------
+    pd.DataFrame
+        The aggregated and processed DataFrame with measure-level data.
+    """
     if drop_not_implemented:
         df = df.loc[df['Year of Implementation'] < 2060].copy()
 
-    # process measure level data
     sd_df = pd.DataFrame(columns=SD_COLUMNS)
     for kwargs in args_list:
         if sd_df.empty:
@@ -248,7 +342,9 @@ def sd_measure_level(df, args_list, drop_not_implemented=False):
         else:
             sd_df = pd.concat([sd_df, aggregate_timeseries(df, **kwargs)])
 
-    # compute extra costs:
+    #
+    # compute some additional costs:
+    #
 
     # compute "Abatement cost new unit" as:
     # the "cost differential" in a given year divided by "total emissions abated" in that year
@@ -270,35 +366,51 @@ def sd_measure_level(df, args_list, drop_not_implemented=False):
     return sd_df
 
 def baseline_from_measure_level(df):
-    """Reformat a measure level table to match the baseline formatting."""
+    """
+    Convert measure-level data to baseline formatting.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The DataFrame containing measure-level data.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame formatted to baseline specifications, aggregating data as necessary.
+    """
     cols = ['Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
     cols = cols[:4] + [f'Category{i+2}: {c}' for i, c in enumerate(CATEGORIES, 1)] + cols[4:]
     bl_df = df.groupby(cols).sum(numeric_only=True)
     bl_df = bl_df.reset_index()
     bl_df = bl_df.rename(columns={'Measure Variable': 'Baseline Variable'})
     bl_df = bl_df.drop(columns=['Measure Name'])
+
     assert not bl_df.duplicated().any()
     return bl_df
 
 def get_additional_demand_agg(df, agg_df, fuel, fuel_out=None, tech='CCS'):
     """
-    Get the aggregate additional demand for a given fuel.
+    Aggregate additional demand for a specified fuel and technology.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        The raw NZIP dataframe.
+    df : pandas.DataFrame
+        The DataFrame containing raw NZIP data.
     agg_df : pd.DataFrame
-        The aggregate dataframe to add the results to.
+        The aggregate DataFrame to which the results will be added.
     fuel : str
-        The name of the fuel to get the additional demand for (nzip column name).
-    fuel_out : str
-        The name of the fuel to use in the aggregate dataframe (SD column name).
-        If not provided, assume this is the same as fuel.
-    tech : str
-        The technology type to filter on.
+        The name of the fuel for which additional demand is calculated.
+    fuel_out : str, optional
+        The output column name for the aggregated demand. Defaults to `fuel`.
+    tech : str, optional
+        The technology type to filter on. Default is 'CCS'.
+
+    Returns
+    -------
+    pd.DataFrame
+        The updated aggregate DataFrame with additional demand for the specified fuel.
     """
-    # if fuel_out is not provided, assume it is the same as fuel
     if fuel_out is None:
         fuel_out = fuel
 
@@ -325,6 +437,25 @@ def get_additional_demand_agg(df, agg_df, fuel, fuel_out=None, tech='CCS'):
     return agg_df
 
 def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
+    """
+    Create an aggregate DataFrame containing results from various calculations.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The raw DataFrame to be aggregated.
+    measure_level_kwargs : list
+        Keyword arguments for processing measure-level data.
+    baseline_kwargs : list
+        Keyword arguments for processing baseline data.
+    sector : str
+        The sector for which the aggregation is performed.
+
+    Returns
+    -------
+    pd.DataFrame
+        An aggregate DataFrame with summarized data across specified measures and baselines.
+    """
     df = df.copy()
 
     # create a dataframe to store the aggregate results
