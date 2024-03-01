@@ -1,6 +1,11 @@
 import pandas as pd
 import numpy as np
-from thefuzz import process
+
+# only import thefuzz if it's installed
+try:
+    from thefuzz import process
+except ImportError:
+    process = None
 
 # modelling years
 START_YEAR = 2021
@@ -164,6 +169,7 @@ def add_cols(df):
         df[f'Change in non bio waste {y}'] = df[f'total non bio waste {y}'] - df[f'post REEE total non bio waste {y}']
         
         # Abatement cost new unit: cost differential in each year divided by total emissions abated in each year
+        # TODO: what is the cost differential?
         abatement = df[f'Total direct emissions abated (MtCO2e) {y}'] + df[f'Total indirect emissions abated (MtCO2e) {y}']
         cost = df[f'Cost Differential (£m) {y}']
         df[f'total emissions abated {y}'] = abatement
@@ -328,7 +334,7 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols, reee_
     ee_df = ee_df[YEARS] # select only relevant years
 
     for y in YEARS:
-        # unsure how to calculate the RE and EE values
+        # TODO: unsure how to calculate the RE and EE values
         ee_frac = df['Element_sector'].map(ee_df[y])
         #assert (ee_frac != 1.0).all()
         # option 1, ee_frac is the proportion of post-REEE emissions that are EE
