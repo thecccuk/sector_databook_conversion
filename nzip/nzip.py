@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 # only import thefuzz if it's installed
 try:
