@@ -4,7 +4,7 @@ import numpy as np
 # only import thefuzz if it's installed
 try:
     from thefuzz import process
-except ImportError:
+except ModuleNotFoundError:
     process = None
 
 # modelling years
