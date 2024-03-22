@@ -13,6 +13,7 @@ END_YEAR = 2050
 YEARS = list(range(START_YEAR, END_YEAR+1))
 
 # some constants
+SECTOR = 'Industry'
 DEVOLVED_AUTHS = ['United Kingdom', 'Scotland', 'Wales', 'Northern Ireland']
 GASES = ['CARBON', 'CH4', 'N2O']
 SD_COLUMNS = ['Measure ID', 'Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
@@ -227,7 +228,7 @@ def sector_databook_format(df, variable_name, variable_unit):
     """
     df = df.reset_index()
     df['Measure ID'] = ''
-    df['Sector'] = 'Industry'
+    df['Sector'] = SECTOR
     df['Subsector'] = df['CCC Subsector']
     df['Measure Name'] = df['Measure Technology']
     df['Measure Variable'] = variable_name

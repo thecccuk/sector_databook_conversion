@@ -16,9 +16,19 @@ The python scripts in this folder allow you to convert the outputs from an NZIP 
 
 ## Running the conversion
 
+### Google Colab
+
 To run the notebook, we will use [Google Colab](https://colab.research.google.com/), which provides python notebooks via the browser for free.
 
 You can create a new colab based on the notebook stored in this gitub repository by following this link:
 
 - https://colab.research.google.com/github/thecccuk/sector_databook_conversion/blob/main/nzip/nb.ipynb
 
+### Local
+
+First install Anaconda from [this link](https://www.anaconda.com/download).
+
+You can then launch a local Juptyer notebook.
+Take a look [here](https://docs.anaconda.com/ae-notebooks/user-guide/basic-tasks/apps/jupyter/index.html) for more info.
+
+This approach has the benefit of avoiding slow upload and download times.
