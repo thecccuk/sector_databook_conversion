@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 # only import thefuzz if it's installed
 try:
@@ -17,6 +18,7 @@ GASES = ['CARBON', 'CH4', 'N2O']
 SD_COLUMNS = ['Measure ID', 'Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
 CATEGORIES = ['Dispersed or Cluster Site', 'Process', 'Selected Option']
 SCENARIO = 'Balanced pathway'
+REEE_SHEET = "REEE Projection - EE Sector"
 
 # compute the discount factor for each year as 1/(1+r)^y
 SOCIAL_DISCOUNT_RATE = 0.035  # 3.5%
@@ -320,36 +322,33 @@ def aggregate_timeseries(df, **kwargs):
     df = pd.concat(dfs)
     return df
 
-
-def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols, reee_sheet_name="REEE Projection - EE Sector", header=327, nrows=28):
+def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols, header=327, nrows=28):
     df = df.copy()
     # read the energy efficiency data from the nzip model.
     # here we taking the "People" scenario which matches the balanced pathway
     with open(nzip_path, 'rb') as f:
-        index = pd.read_excel(f, sheet_name=reee_sheet_name, header=header, nrows=nrows, usecols='D', index_col=0)
-        ee_df = pd.read_excel(f, sheet_name=reee_sheet_name, header=header, nrows=nrows, usecols=usecols, index_col=None)
+        index = pd.read_excel(f, sheet_name=REEE_SHEET, header=header, nrows=nrows, usecols='D', index_col=0)
+        ee_df = pd.read_excel(f, sheet_name=REEE_SHEET, header=header, nrows=nrows, usecols=usecols, index_col=None)
         ee_df.index = index.index
     ee_df.columns = [int(x[:4]) for x in ee_df.columns] # cast column names to int and fix names
     ee_df = ee_df[YEARS] # select only relevant years
+    
+    # for some reason the ee fraction is report in % for the abatement, but in factors of 1.x for the demands
+    # so we need to account for this here
+    if baseline_col != "Baseline emissions (MtCO2e)":
+        ee_df = 1 - ee_df
 
     for y in YEARS:
-        # TODO: unsure how to calculate the RE and EE values
+        # ee_frac represents the percentage reduction in emissions due to EE
         ee_frac = df['Element_sector'].map(ee_df[y])
-        #assert (ee_frac != 1.0).all()
-        # option 1, ee_frac is the proportion of post-REEE emissions that are EE
-        if False:
-            ee = df[f'Post REEE baseline emissions (MtCO2e) {y}'] * ee_frac
-            re =  (df[f'Baseline emissions (MtCO2e) {y}'] - df[f'Post REEE baseline emissions (MtCO2e) {y}']) - ee
-        # option two: ee_frac represents the percentage reduction in emissions due to EE
-        else:
-            ee = (df[f'{post_reee_col} {y}'] / (1 - ee_frac)) - df[f'{post_reee_col} {y}']
-            re =  (df[f'{baseline_col} {y}'] - df[f'{post_reee_col} {y}']) - ee
+        ee = (df[f'{post_reee_col} {y}'] / (1 - ee_frac)) - df[f'{post_reee_col} {y}']
+        re =  (df[f'{baseline_col} {y}'] - df[f'{post_reee_col} {y}']) - ee        
         df[f'RE {out_col} {y}'] = re
         df[f'EE {out_col} {y}'] = ee
 
         # assert neither of these are nan or inf
-        #assert np.isfinite(df[f'RE {out_col} {y}']).all()
-        #assert np.isfinite(df[f'EE {out_col} {y}']).all()
+        assert np.isfinite(df[f'RE {out_col} {y}']).all()
+        assert np.isfinite(df[f'EE {out_col} {y}']).all()
 
     return df
 
@@ -386,13 +385,10 @@ def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
     if not baseline:
         reee_df = None
         for kwargs in reee_args:
-            if reee_df is None:
-                reee_df = add_reee(nzip_path, df, **kwargs)
-            else:
-                reee_df = pd.concat([reee_df, add_reee(nzip_path, df, **kwargs)])
-        agg_kwargs = {'variable_name': 'Abatement Emissions CO2', 'variable_unit': 'MtCO2'}
-        sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"RE {kwargs['out_col']}", measure='Resource Efficiency', **agg_kwargs)])
-        sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"EE {kwargs['out_col']}", measure='Energy Efficiency', **agg_kwargs)])
+            agg_kwargs = {'variable_name': kwargs['out_col'], 'variable_unit': kwargs.pop('variable_unit')}
+            reee_df = add_reee(nzip_path, df, **kwargs)
+            sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"RE {kwargs['out_col']}", measure='Resource Efficiency', **agg_kwargs)])
+            sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"EE {kwargs['out_col']}", measure='Energy Efficiency', **agg_kwargs)])
 
     #
     # compute some additional costs:
