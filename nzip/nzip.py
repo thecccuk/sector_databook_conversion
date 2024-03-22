@@ -342,7 +342,13 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols="E:AL"
         # ee_frac represents the percentage reduction in emissions due to EE
         ee_frac = df['Element_sector'].map(ee_df[y])
         ee = (df[f'{post_reee_col} {y}'] / (1 - ee_frac)) - df[f'{post_reee_col} {y}']
-        re =  (df[f'{baseline_col} {y}'] - df[f'{post_reee_col} {y}']) - ee        
+        re = (df[f'{baseline_col} {y}'] - df[f'{post_reee_col} {y}']) - ee        
+
+        # when computing demands, we flip the sign as these are "additional demands" rather than "abated emissions"
+        if baseline_col != "Baseline emissions (MtCO2e)":
+            ee = -ee
+            re = -re
+
         df[f'RE {out_col} {y}'] = re
         df[f'EE {out_col} {y}'] = ee
 
@@ -381,11 +387,12 @@ def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
         else:
             sd_df = pd.concat([sd_df, aggregate_timeseries(df, **kwargs)])
 
-    # handle REEE
+    # handle REEE measures
     if not baseline:
-        reee_df = None
+        if reee_args is not None:
+            reee_args = reee_args.copy()
         for kwargs in reee_args:
-            agg_kwargs = {'variable_name': kwargs['out_col'], 'variable_unit': kwargs.pop('variable_unit')}
+            agg_kwargs = {'variable_name': kwargs['out_col'], 'variable_unit': kwargs.pop('variable_unit'), 'scale': kwargs.pop('scale', None)}
             reee_df = add_reee(nzip_path, df, **kwargs)
             sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"RE {kwargs['out_col']}", measure='Resource Efficiency', **agg_kwargs)])
             sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"EE {kwargs['out_col']}", measure='Energy Efficiency', **agg_kwargs)])
