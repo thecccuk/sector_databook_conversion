@@ -322,7 +322,7 @@ def aggregate_timeseries(df, **kwargs):
     df = pd.concat(dfs)
     return df
 
-def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols, header=327, nrows=28):
+def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols="E:AL", header=327, nrows=28):
     df = df.copy()
     # read the energy efficiency data from the nzip model.
     # here we taking the "People" scenario which matches the balanced pathway
@@ -335,8 +335,8 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols, heade
     
     # for some reason the ee fraction is report in % for the abatement, but in factors of 1.x for the demands
     # so we need to account for this here
-    if baseline_col != "Baseline emissions (MtCO2e)":
-        ee_df = 1 - ee_df
+    #if baseline_col != "Baseline emissions (MtCO2e)":
+    #    ee_df = 1 - ee_df # 22/03/24: removing this for now as it seems to be incorrect, instead use the EE fracs from emissions
 
     for y in YEARS:
         # ee_frac represents the percentage reduction in emissions due to EE
