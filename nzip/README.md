@@ -10,8 +10,9 @@ The python scripts in this folder allow you to convert the outputs from an NZIP 
 ## Description of files
 
 - `nzip_model_sector_map.csv` is a mapping from the EE subsector name (used by NZIP), to the subsector we use at the CCC.
-- `nzip.py` is a python module containing the "low level" functions which handle all the conversion logic.
-- `nb.pynb` is a Jupyter notebook which which contains configuration and then calls the different functions in `nzip.py`.
+- `nzip.py` is a python module containing the "low level" functions which handle all the calculations and conversion logic. Assuming the structure of the NZIP model outputs is consistent, you shouldn't need to make changes here.
+- `nb.pynb` is a Jupyter notebook which which contains configuration and then calls the different functions in `nzip.py`. The notebook contains some additional information about each step of the conversion process.
+- `requirements.txt` is a list of python packages required to run the conversion.
 
 ## Running the conversion
 
