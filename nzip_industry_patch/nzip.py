@@ -185,10 +185,10 @@ def add_cols(df): #Joris - This makes sense.
         df[f'cost differential {y}'] = cost
 
         # Abatement cost average measure: cumulative cost differential divided by cumulative total emissions abated
-        if y == START_YEAR:
+        #if y == START_YEAR:
             #df[f'cum cost differential {y}'] = cost
             #df[f'cum total emissions abated {y}'] = abatement
-        else:
+       # else:
             #df[f'cum cost differential {y}'] = df[f'cum cost differential {y-1}'] + cost
             #df[f'cum total emissions abated {y}'] = df[f'cum total emissions abated {y-1}'] + abatement
 
