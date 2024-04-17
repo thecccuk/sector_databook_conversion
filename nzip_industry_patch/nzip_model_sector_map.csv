@@ -13,11 +13,11 @@ Fuel Supply,Shale Gas,Fossil fuel production
 Fuel Supply ,Compressor Station,Fossil fuel production 
 Industry,Ammonia,Chemicals
 Industry,Cement,Cement and lime
-Industry,Construction,Other manufacturing and construction
+Industry,Construction,Other industry
 Industry,Ethylene,Chemicals
 Industry,Food & Drink,Food and drink
 Industry,Glass,Glass and other minerals
-Industry,Iron (Port Talbot Scunthorpe),Iron and Steel
+Industry,Iron (Port Talbot Scunthorpe),Iron and steel
 Industry,Lime,Cement and lime
 Industry,Non ferrous metal,Non ferrous metals
 Industry,NRMM,Non-road mobile machinery
@@ -25,6 +25,7 @@ Industry,Other Chemicals,Chemicals
 Industry,Other industry,Other industry
 Industry,Other Industry,Other industry
 Industry,Other Iron and Steel,Iron and steel
+Industry,Other Iron and steel,Iron and steel
 Industry,Other Minerals,Glass and other minerals
 Industry,Paper,Paper
 Industry,Vehicles,Vehicles
