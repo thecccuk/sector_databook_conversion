@@ -1,4 +1,0 @@
-pandas==1.5.3
-thefuzz==0.20.0
-pyxlsb==1.0.10
-numpy==1.25.2

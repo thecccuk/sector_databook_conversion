@@ -345,10 +345,12 @@ def add_reee(nzip_path, df, scenario, baseline_col, post_reee_col, out_col, usec
     # so we need to account for this here
     #if baseline_col != "Baseline emissions (MtCO2e)":
     #    ee_df = 1 - ee_df # 22/03/24: removing this for now as it seems to be incorrect, instead use the EE fracs from emissions
-
+    
     for y in YEARS:
         # ee_frac represents the percentage reduction in emissions due to EE
         ee_frac = df['Element_sector'].map(ee_df[y])
+        #ee = df[f'Post REEE baseline emissions (MtCO2e) {y}'] * ee_frac
+        #re =  (df[f'Baseline emissions (MtCO2e) {y}'] - df[f'Post REEE baseline emissions (MtCO2e) {y}']) - ee
         ee = (df[f'{post_reee_col} {y}'] / (1 - ee_frac)) - df[f'{post_reee_col} {y}']
         re = (df[f'{baseline_col} {y}'] - df[f'{post_reee_col} {y}']) - ee        
 
@@ -416,9 +418,9 @@ def sd_measure_level(df, args, scenario, reee_args=None, baseline=True, nzip_pat
     sd_df.loc[cost, YEARS] = (sd_df.loc[cost, YEARS] / sd_df.loc[abated, YEARS]).fillna(0)
     sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost new unit'
     sd_df = sd_df.loc[~abated] # remove intermediate rows used in the calculation
-    
-        # compute "Abatement cost new unit" as:
-    # the "cost differential" in a given year divided by "total emissions abated" in that year
+
+    # compute "Abatement cost average measure" as:
+    # the cumulative "cost differential" divided by the cumulative "total emissions abated"
     cost = sd_df['Measure Variable'] == f'cost differential'
     abated = sd_df['Measure Variable'] == f'total emissions abated'
     sd_df.loc[cost, YEARS] = (sd_df.loc[cost, YEARS] / sd_df.loc[abated, YEARS]).fillna(0)
@@ -551,7 +553,6 @@ def get_aggregate_df(df, measure_level_kwargs, scenario, baseline_kwargs, sector
         An aggregate DataFrame with summarized data across specified measures and baselines.
     """
     df = df.copy()
-    #df.to_excel('AAP.xlsx')
 
     # create a dataframe to store the aggregate results
     agg_df = pd.DataFrame(columns=['Scenario', 'Country', 'Sector', 'Aggregate Variable', 'Variable Unit'] + list(range(START_YEAR, END_YEAR+1)))
