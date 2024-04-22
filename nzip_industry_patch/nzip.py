@@ -189,8 +189,10 @@ def add_cols(df): #Joris - This makes sense.
             df[f'cum cost differential {y}'] = cost
             df[f'cum total emissions abated {y}'] = abatement
         else:
-            df[f'cum cost differential {y}'] = df[f'cum cost differential {y-1}'] + cost
-            df[f'cum total emissions abated {y}'] = df[f'cum total emissions abated {y-1}'] + abatement
+            df[f'cum cost differential {y}'] = cost
+            df[f'cum total emissions abated {y}'] = abatement
+            #df[f'cum cost differential {y}'] = df[f'cum cost differential {y-1}'] + cost
+            #df[f'cum total emissions abated {y}'] = df[f'cum total emissions abated {y-1}'] + abatement
 
     return df
 
@@ -418,14 +420,34 @@ def sd_measure_level(df, args, scenario, reee_args=None, baseline=True, nzip_pat
     sd_df.loc[cost, YEARS] = (sd_df.loc[cost, YEARS] / sd_df.loc[abated, YEARS]).fillna(0)
     sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost new unit'
     sd_df = sd_df.loc[~abated] # remove intermediate rows used in the calculation
-
-    # compute "Abatement cost average measure" as:
+    
+        # compute "Abatement cost average measure" as:
     # the cumulative "cost differential" divided by the cumulative "total emissions abated"
-    cost = sd_df['Measure Variable'] == f'cost differential'
-    abated = sd_df['Measure Variable'] == f'total emissions abated'
+    cost = sd_df['Measure Variable'] == f'cum cost differential'
+    abated = sd_df['Measure Variable'] == f'cum total emissions abated'
     sd_df.loc[cost, YEARS] = (sd_df.loc[cost, YEARS] / sd_df.loc[abated, YEARS]).fillna(0)
     sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost average measure'
     sd_df = sd_df.loc[~abated] # remove intermediate rows used in the calculation
+    
+    
+    # Compute "Abatement cost average measure" with the same calculation as "Abatement cost new unit"
+    #cost_diff = sd_df[sd_df['Measure Variable'] == 'cost differential']
+    #total_abated = sd_df[sd_df['Measure Variable'] == 'total emissions abated']
+    #abatement_cost_avg_measure = (cost_diff[YEARS].values / total_abated[YEARS].values).fillna(0)
+    #cost_diff['Measure Variable'] = 'Abatement cost average measure'
+    #cost_diff[YEARS] = abatement_cost_avg_measure
+
+    # Concatenate the results back into the original dataframe
+    #sd_df = pd.concat([sd_df, cost_diff], ignore_index=True)
+    
+
+    # compute "Abatement cost average measure" as:
+    # the cumulative "cost differential" divided by the cumulative "total emissions abated"
+    #cost = sd_df['Measure Variable'] == f'cost differential'
+    #abated = sd_df['Measure Variable'] == f'total emissions abated'
+    #sd_df.loc[cost, YEARS] = (sd_df.loc[cost, YEARS] / sd_df.loc[abated, YEARS]).fillna(0)
+    #sd_df.loc[cost, 'Measure Variable'] = f'Abatement cost average measure'
+    #sd_df = sd_df.loc[~abated] # remove intermediate rows used in the calculation
 
     #assert not sd_df.duplicated().any()
     return sd_df
