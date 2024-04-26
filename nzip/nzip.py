@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pandas as pd
 import numpy as np
 
@@ -337,7 +339,7 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols="E:AL"
     for y in YEARS:
         # ee_frac represents the percentage reduction in emissions due to EE
         ee_frac = df['Element_sector'].map(ee_df[y])
-        ee = (df[f'{post_reee_col} {y}'] / (1 - ee_frac)) - df[f'{post_reee_col} {y}']
+        ee = (df[f'{post_reee_col} {y}'] * (1 + ee_frac)) - df[f'{post_reee_col} {y}']
         re = (df[f'{baseline_col} {y}'] - df[f'{post_reee_col} {y}']) - ee        
 
         # when computing demands, we flip the sign as these are "additional demands" rather than "abated emissions"
@@ -351,6 +353,11 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols="E:AL"
         # assert neither of these are nan or inf
         assert np.isfinite(df[f'RE {out_col} {y}']).all()
         assert np.isfinite(df[f'EE {out_col} {y}']).all()
+
+    # manual tweaks for REEE measures
+    df['Dispersed or Cluster Site'] = ''
+    df['Process'] = ''
+    df['Selected Option'] = ''
 
     return df
 
@@ -373,6 +380,10 @@ def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
     pd.DataFrame
         The aggregated and processed DataFrame with measure-level data.
     """
+    args = deepcopy(args)
+    if reee_args is not None:
+        reee_args = deepcopy(reee_args)
+
     if not baseline:
         df = df.loc[df['Year of Implementation'] < 2060].copy()
 
@@ -390,8 +401,19 @@ def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
         for kwargs in reee_args:
             agg_kwargs = {'variable_name': kwargs['out_col'], 'variable_unit': kwargs.pop('variable_unit'), 'scale': kwargs.pop('scale', None)}
             reee_df = add_reee(nzip_path, df, **kwargs)
-            sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"RE {kwargs['out_col']}", measure='Resource Efficiency', **agg_kwargs)])
-            sd_df = pd.concat([sd_df, aggregate_timeseries(reee_df, timeseries=f"EE {kwargs['out_col']}", measure='Energy Efficiency', **agg_kwargs)])
+
+            re_df = aggregate_timeseries(reee_df, timeseries=f"RE {kwargs['out_col']}", measure='Resource Efficiency', **agg_kwargs)
+            ee_df = aggregate_timeseries(reee_df, timeseries=f"EE {kwargs['out_col']}", measure='Energy Efficiency', **agg_kwargs)
+            reee_df = pd.concat([re_df, ee_df])
+            reee_df['Category5: Selected Option'] = reee_df['Measure Name']
+
+            # add in abatement total direct
+            co2_abatement = reee_df.loc[reee_df['Measure Variable'] == 'Abatement emission CO2'].copy()
+            co2_abatement['Measure Variable'] = 'Abatement total direct'
+            reee_df = pd.concat([reee_df, co2_abatement])
+            
+            # add to main df
+            sd_df = pd.concat([sd_df, reee_df])
 
     #
     # compute some additional costs:
