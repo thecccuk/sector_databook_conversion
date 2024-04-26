@@ -419,6 +419,7 @@ def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
 def baseline_from_measure_level(df):
     """
     Convert measure-level data to baseline formatting.
+    Also sums over "Selected Option" and "Measure Name" columns.
 
     Parameters
     ----------
@@ -430,12 +431,13 @@ def baseline_from_measure_level(df):
     pd.DataFrame
         A DataFrame formatted to baseline specifications, aggregating data as necessary.
     """
-    cols = ['Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
-    cols = cols[:4] + [f'Category{i+2}: {c}' for i, c in enumerate(CATEGORIES, 1)] + cols[4:]
-    bl_df = df.groupby(cols).sum(numeric_only=True)
-    bl_df = bl_df.reset_index()
+    bl_df = df.copy()
+    bl_df = bl_df.drop(columns=['Category5: Selected Option', 'Measure Name'])
     bl_df = bl_df.rename(columns={'Measure Variable': 'Baseline Variable'})
-    bl_df = bl_df.drop(columns=['Measure Name'])
+    cols = ['Country', 'Sector', 'Subsector', 'Baseline Variable', 'Variable Unit']
+    cols = cols[:3] + [f'Category{i+2}: {c}' for i, c in enumerate(CATEGORIES, 1) if "Selected Option" not in c] + cols[3:]
+    bl_df = bl_df.groupby(cols).sum(numeric_only=True)
+    bl_df = bl_df.reset_index()
 
     assert not bl_df.duplicated().any()
     return bl_df
