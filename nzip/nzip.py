@@ -472,23 +472,32 @@ def get_additional_demand_agg(df, agg_df, fuel, fuel_out=None, tech='CCS'):
 
     # only consider rows for the given technology type
     ccs_df = df.loc[df['Technology Type'] == tech].copy()
-    year_of_implementation = ccs_df['Year of Implementation']
-
-    # for each year
-    for y in YEARS:
-        # compute the total fuel use after the year of implementation, and multiply by the abatement rate
-        ccs_df[f'{fuel} use after implementation {y}'] = ccs_df[f'Total {fuel} use (GWh) {y}'].copy()
-        ccs_df.loc[y < year_of_implementation, f'{fuel} use after implementation {y}'] = 0
-        
-        # updated guidance from CB team: don't multiply by the CCS capture rate
-        #ccs_df[f'{fuel} use after implementation {y}'] *= ccs_df['Abatement Rate']
-        
-        # sum all rows and convert from GWh to TWh
-        agg_df.loc[f'Additional demand {fuel_out} abated', y] = ccs_df[f'{fuel} use after implementation {y}'].sum() * 0.001
     
-    agg_df.loc[f'Additional demand {fuel_out} abated', 'Aggregate Variable'] = f'Additional demand {fuel_out} abated'
-    agg_df.loc[f'Additional demand {fuel_out} abated', 'Variable Unit'] = 'TWh'
-    agg_df.loc[f'Additional demand {fuel_out} abated', 'Scenario'] = SCENARIO
+    for country in DEVOLVED_AUTHS:
+        if country != 'United Kingdom':
+            # filter to rows for the given country
+            ccs_df = ccs_df.loc[ccs_df['Country'] == country].copy()
+
+        year_of_implementation = ccs_df['Year of Implementation']
+        var_name = f'Additional demand {fuel_out} abated'
+        idx_name = f'{var_name}_{country}'
+
+        # for each year
+        for y in YEARS:
+            # compute the total fuel use after the year of implementation, and multiply by the abatement rate
+            ccs_df[f'{fuel} use after implementation {y}'] = ccs_df[f'Total {fuel} use (GWh) {y}'].copy()
+            ccs_df.loc[y < year_of_implementation, f'{fuel} use after implementation {y}'] = 0
+            
+            # updated guidance from CB team: don't multiply by the CCS capture rate
+            #ccs_df[f'{fuel} use after implementation {y}'] *= ccs_df['Abatement Rate']
+            
+            # sum all rows and convert from GWh to TWh
+            agg_df.loc[idx_name, y] = ccs_df[f'{fuel} use after implementation {y}'].sum() * 0.001
+        
+        agg_df.loc[idx_name, 'Aggregate Variable'] = var_name
+        agg_df.loc[idx_name, 'Variable Unit'] = 'TWh'
+        agg_df.loc[idx_name, 'Scenario'] = SCENARIO
+        agg_df.loc[idx_name, 'Country'] = country
 
     return agg_df
 
@@ -560,13 +569,13 @@ def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
     agg_df.loc['Direct traded emissions total', 'Variable Unit'] = 'MtCO2e'
     agg_df.loc['Direct traded emissions total', 'Scenario'] = SCENARIO
 
-    # additional demand gas, petroleum, solid fuel
-    agg_df = get_additional_demand_agg(df, agg_df, 'natural gas', 'gas')
-    agg_df = get_additional_demand_agg(df, agg_df, 'petroleum')
-    agg_df = get_additional_demand_agg(df, agg_df, 'solid fuel')
- 
-    # fill some missing stuff
+    # so far all variables are UK only
     agg_df['Country'] = 'United Kingdom'
+
+    # additional demand gas abated for each country
+    agg_df = get_additional_demand_agg(df, agg_df, 'natural gas', 'gas')
+    
+    # all rows have the same sector
     agg_df['Sector'] = sector
 
     return agg_df
