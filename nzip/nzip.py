@@ -13,12 +13,12 @@ END_YEAR = 2050
 YEARS = list(range(START_YEAR, END_YEAR+1))
 
 # some constants
-SECTOR = 'Industry'
+SECTOR = 'Industry' # gets overwritten in the notebook
+SCENARIO = 'Balanced Pathway' # gets overwritten in the notebook
 DEVOLVED_AUTHS = ['United Kingdom', 'Scotland', 'Wales', 'Northern Ireland']
 GASES = ['CARBON', 'CH4', 'N2O']
 SD_COLUMNS = ['Measure ID', 'Country', 'Sector', 'Subsector', 'Measure Name', 'Measure Variable', 'Variable Unit']
 CATEGORIES = ['Dispersed or Cluster Site', 'Process', 'Selected Option']
-SCENARIO = 'Balanced pathway'
 REEE_SHEET = "REEE Projection - EE Sector"
 
 # compute the discount factor for each year as 1/(1+r)^y
@@ -155,9 +155,9 @@ def add_cols(df):
         # 1. if the year of implementation is less than the year in question, the costs are 0
         # 2. otherwise, the costs are the same as the total AM capex and opex columns
         df[f'capex low carbon {y}'] = df[f'AM capex (£m) {y}'].copy()
-        df.loc[df['Year of Implementation'] < y, f'capex low carbon {y}'] = 0
+        df.loc[y < df['Year of Implementation'], f'capex low carbon {y}'] = 0
         df[f'opex low carbon {y}'] = df[f'AM opex (£m) {y}'].copy()
-        df.loc[df['Year of Implementation'] < y, f'opex low carbon {y}'] = 0
+        df.loc[y < df['Year of Implementation'], f'opex low carbon {y}'] = 0
     
         # additional demand final non bio, calculated as follows:
         # 1. based on the process/sector, we know the fraction of non bio waste
@@ -177,13 +177,9 @@ def add_cols(df):
         df[f'total emissions abated {y}'] = abatement
         df[f'cost differential {y}'] = cost
 
-        # Abatement cost average measure: cumulative cost differential divided by cumulative total emissions abated
-        if y == START_YEAR:
-            df[f'cum cost differential {y}'] = cost
-            df[f'cum total emissions abated {y}'] = abatement
-        else:
-            df[f'cum cost differential {y}'] = df[f'cum cost differential {y-1}'] + cost
-            df[f'cum total emissions abated {y}'] = df[f'cum total emissions abated {y-1}'] + abatement
+        # these are for Abatement cost average measure: cumulative cost differential divided by cumulative total emissions abated
+        df[f'cum cost differential {y}'] = cost
+        df[f'cum total emissions abated {y}'] = abatement
 
     return df
 
@@ -338,7 +334,6 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols="E:AL"
     # so we need to account for this here
     #if baseline_col != "Baseline emissions (MtCO2e)":
     #    ee_df = 1 - ee_df # 22/03/24: removing this for now as it seems to be incorrect, instead use the EE fracs from emissions
-
     for y in YEARS:
         # ee_frac represents the percentage reduction in emissions due to EE
         ee_frac = df['Element_sector'].map(ee_df[y])
@@ -360,7 +355,7 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols="E:AL"
     return df
 
 
-def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
+def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):    
     """
     Process and aggregate measure-level data according to specified arguments.
 
@@ -487,7 +482,7 @@ def get_additional_demand_agg(df, agg_df, fuel, fuel_out=None, tech='CCS'):
             # compute the total fuel use after the year of implementation, and multiply by the abatement rate
             ccs_df[f'{fuel} use after implementation {y}'] = ccs_df[f'Total {fuel} use (GWh) {y}'].copy()
             ccs_df.loc[y < year_of_implementation, f'{fuel} use after implementation {y}'] = 0
-            
+
             # updated guidance from CB team: don't multiply by the CCS capture rate
             #ccs_df[f'{fuel} use after implementation {y}'] *= ccs_df['Abatement Rate']
             
@@ -500,6 +495,7 @@ def get_additional_demand_agg(df, agg_df, fuel, fuel_out=None, tech='CCS'):
         agg_df.loc[idx_name, 'Country'] = country
 
     return agg_df
+
 
 def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
     """
@@ -538,13 +534,18 @@ def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
     bl_df_traded = baseline_from_measure_level(bl_df_traded)
 
     # compute pathway emissions for the UK
+    gasses = ['Baseline emissions CO2', 'Baseline emissions CH4', 'Baseline emissions N2O']
     total_abatement = sd_df.loc[(sd_df['Measure Variable'] == 'Abatement total direct') & (sd_df['Country'] == 'United Kingdom')].sum(numeric_only=True)
-    total_baseline_emissions = bl_df.loc[(bl_df['Baseline Variable'] == 'Baseline emissions CO2') & (bl_df['Country'] == 'United Kingdom')].sum(numeric_only=True)
+    total_baseline_emissions = bl_df.loc[
+        (bl_df['Baseline Variable'].isin(gasses)) & (bl_df['Country'] == 'United Kingdom')
+    ].sum(numeric_only=True)
     total_pathway_emissions = total_baseline_emissions - total_abatement
 
     # same for traded
     total_abatement_traded = sd_df_traded.loc[(sd_df_traded['Measure Variable'] == 'Abatement total direct') & (sd_df_traded['Country'] == 'United Kingdom')].sum(numeric_only=True)
-    total_baseline_emissions_traded = bl_df_traded.loc[(bl_df_traded['Baseline Variable'] == 'Baseline emissions CO2') & (bl_df_traded['Country'] == 'United Kingdom')].sum(numeric_only=True)
+    total_baseline_emissions_traded = bl_df_traded.loc[
+        (bl_df_traded['Baseline Variable'].isin(gasses)) & (bl_df_traded['Country'] == 'United Kingdom')
+    ].sum(numeric_only=True)
     total_pathway_emissions_traded = total_baseline_emissions_traded - total_abatement_traded
     
     # fill cells manually
@@ -574,7 +575,7 @@ def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
 
     # additional demand gas abated for each country
     agg_df = get_additional_demand_agg(df, agg_df, 'natural gas', 'gas')
-    
+
     # all rows have the same sector
     agg_df['Sector'] = sector
 
