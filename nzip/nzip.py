@@ -111,13 +111,20 @@ def load_nzip(nzip_path: str, sector_map_path: str, sector: str):
     df['Selected Option'] = df['Selected Option'].fillna('')
     df['Technology Type'] = df['Technology Type'].fillna('')
 
+    # map some measures
+    tech_map = {'Blue Hydrogen': 'Hydrogen', 'Green Hydrogen': 'Hydrogen', 'Electric': 'Electrification'}
+    df['Measure Technology'] = df['Technology Type'].replace(tech_map)
+    df.loc[df['Selected Option'] == 'BECCS 1 - Calcium Looping', 'Measure Technology'] = 'BECCS'
+    df.loc[df['Selected Option'] == 'BECCS 2 - Calcium Looping', 'Measure Technology'] = 'BECCS'
+    df.loc[df['Selected Option'] == 'Strong LDAR', 'Measure Technology'] = 'Resource Efficiency'
+    df.loc[df['Selected Option'] == 'Process change', 'Measure Technology'] = 'Electrification'
+    df.loc[df['Selected Option'] == 'EAF', 'Measure Technology'] = 'Electrification'
+
     fix_numeric_cols = ['% CARBON Emissions', '% CH4 Emissions', '% N2O Emissions']
-    fix_numeric_cols += [f'Total AM costs (£m) {y}' for y in YEARS]
-    fix_numeric_cols += [f'AM opex (£m) {y}' for y in YEARS]
-    fix_numeric_cols += [f'AM fuel costs (£m) {y}' for y in YEARS]
-    fix_numeric_cols += [f'Cost Differential (£m) {y}' for y in YEARS]
-    fix_numeric_cols += [f'Total direct emissions abated (MtCO2e) {y}' for y in YEARS]
-    fix_numeric_cols += [f'Total indirect emissions abated (MtCO2e) {y}' for y in YEARS]
+    fix_numeric_cols += [f'Year of Implementation']
+    for col in df.columns:
+        if df[col].dtype == 'object' and any(str(y) in col for y in YEARS):
+            fix_numeric_cols.append(col)
     for col in fix_numeric_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     df = df.fillna(0)
@@ -279,11 +286,8 @@ def aggregate_timeseries_country(df, timeseries, variable_name, variable_unit, w
     if scale:
         df[emissions_cols] = df[emissions_cols] * scale
 
-    # map some technology types to a new name
-    if not measure:
-        tech_map = {'Blue Hydrogen': 'Hydrogen', 'Green Hydrogen': 'Hydrogen', 'Electric': 'Electrification'}
-        df['Measure Technology'] = df['Technology Type'].replace(tech_map)
-    else:
+    # for reee we want to override measure names
+    if measure:
         df['Measure Technology'] = measure
         
     # sum rows corresponding to the same measure
@@ -331,16 +335,12 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols="E:AL"
         ee_df.index = index.index
     ee_df.columns = [int(x[:4]) for x in ee_df.columns] # cast column names to int and fix names
     ee_df = ee_df[YEARS] # select only relevant years
-    
-    # for some reason the ee fraction is report in % for the abatement, but in factors of 1.x for the demands
-    # so we need to account for this here
-    #if baseline_col != "Baseline emissions (MtCO2e)":
-    #    ee_df = 1 - ee_df # 22/03/24: removing this for now as it seems to be incorrect, instead use the EE fracs from emissions
+
     for y in YEARS:
         # ee_frac represents the percentage reduction in emissions due to EE
         ee_frac = df['Element_sector'].map(ee_df[y])
-        ee = (df[f'{post_reee_col} {y}'] * (1 + ee_frac)) - df[f'{post_reee_col} {y}']
-        re = (df[f'{baseline_col} {y}'] - df[f'{post_reee_col} {y}']) - ee        
+        ee = df[f'{post_reee_col} {y}'] * ee_frac
+        re = (df[f'{baseline_col} {y}'] - df[f'{post_reee_col} {y}']) - ee
 
         # when computing demands, we flip the sign as these are "additional demands" rather than "abated emissions"
         if baseline_col != "Baseline emissions (MtCO2e)":
@@ -355,6 +355,7 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols="E:AL"
         assert np.isfinite(df[f'EE {out_col} {y}']).all()
 
     # manual tweaks for REEE measures
+    df['Country'] = 'England' # decided that we don't want any DA-level REEE numbers
     df['Dispersed or Cluster Site'] = ''
     df['Process'] = ''
     df['Selected Option'] = ''
@@ -384,17 +385,19 @@ def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
     if reee_args is not None:
         reee_args = deepcopy(reee_args)
 
+    # all non-REEE measures have to be implemented before 2050
+    df2 = df.copy()
     if not baseline:
-        df = df.loc[df['Year of Implementation'] < 2060].copy()
+        df2 = df2.loc[df['Year of Implementation'] < 2060].copy()
 
     sd_df = pd.DataFrame(columns=SD_COLUMNS)
     for kwargs in args:
         if sd_df.empty:
-            sd_df = aggregate_timeseries(df, **kwargs)
+            sd_df = aggregate_timeseries(df2, **kwargs)
         else:
-            sd_df = pd.concat([sd_df, aggregate_timeseries(df, **kwargs)])
+            sd_df = pd.concat([sd_df, aggregate_timeseries(df2, **kwargs)])
 
-    # handle REEE measures
+    # handle REEE measures - here we ignore the year of implementation constraint
     if not baseline:
         if reee_args is not None:
             reee_args = reee_args.copy()
@@ -408,7 +411,7 @@ def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
             reee_df['Category5: Selected Option'] = reee_df['Measure Name']
 
             # add in abatement total direct
-            co2_abatement = reee_df.loc[reee_df['Measure Variable'] == 'Abatement emission CO2'].copy()
+            co2_abatement = reee_df.loc[reee_df['Measure Variable'] == 'Abatement emissions CO2'].copy()
             co2_abatement['Measure Variable'] = 'Abatement total direct'
             reee_df = pd.concat([reee_df, co2_abatement])
             
@@ -503,6 +506,11 @@ def get_additional_demand_agg(df, agg_df, fuel, fuel_out=None, tech='CCS'):
 
         # for each year
         for y in YEARS:
+            agg_df.loc[idx_name, y] = 0
+
+            """
+            # 01/05/24 update: In NZIP all CCS is powered by hydrogen, so there is no abated gas.
+
             # compute the total fuel use after the year of implementation, and multiply by the abatement rate
             ccs_df[f'{fuel} use after implementation {y}'] = ccs_df[f'Total {fuel} use (GWh) {y}'].copy()
             ccs_df.loc[y < year_of_implementation, f'{fuel} use after implementation {y}'] = 0
@@ -512,6 +520,7 @@ def get_additional_demand_agg(df, agg_df, fuel, fuel_out=None, tech='CCS'):
             
             # sum all rows and convert from GWh to TWh
             agg_df.loc[idx_name, y] = ccs_df[f'{fuel} use after implementation {y}'].sum() * 0.001
+            """
         
         agg_df.loc[idx_name, 'Aggregate Variable'] = var_name
         agg_df.loc[idx_name, 'Variable Unit'] = 'TWh'
@@ -519,6 +528,14 @@ def get_additional_demand_agg(df, agg_df, fuel, fuel_out=None, tech='CCS'):
         agg_df.loc[idx_name, 'Country'] = country
 
     return agg_df
+
+
+def get_total_emissions(df, variable_prefix):
+    df = df.loc[df['Country'] == 'United Kingdom'].copy()
+    variable_str = f'{variable_prefix} emissions '
+    col = 'Measure Variable' if variable_prefix == 'Abatement' else 'Baseline Variable'
+    df = df.loc[df[col].str.contains(variable_str)].copy()
+    return df.sum(numeric_only=True)
 
 
 def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
@@ -558,38 +575,33 @@ def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
     bl_df_traded = baseline_from_measure_level(bl_df_traded)
 
     # compute pathway emissions for the UK
-    gasses = ['Baseline emissions CO2', 'Baseline emissions CH4', 'Baseline emissions N2O']
-    total_abatement = sd_df.loc[(sd_df['Measure Variable'] == 'Abatement total direct') & (sd_df['Country'] == 'United Kingdom')].sum(numeric_only=True)
-    total_baseline_emissions = bl_df.loc[
-        (bl_df['Baseline Variable'].isin(gasses)) & (bl_df['Country'] == 'United Kingdom')
-    ].sum(numeric_only=True)
-    total_pathway_emissions = total_baseline_emissions - total_abatement
+    total_abatement = get_total_emissions(sd_df, 'Abatement')
+    total_baseline = get_total_emissions(bl_df, 'Baseline')
+    pathway_emissions = total_baseline - total_abatement
 
     # same for traded
-    total_abatement_traded = sd_df_traded.loc[(sd_df_traded['Measure Variable'] == 'Abatement total direct') & (sd_df_traded['Country'] == 'United Kingdom')].sum(numeric_only=True)
-    total_baseline_emissions_traded = bl_df_traded.loc[
-        (bl_df_traded['Baseline Variable'].isin(gasses)) & (bl_df_traded['Country'] == 'United Kingdom')
-    ].sum(numeric_only=True)
-    total_pathway_emissions_traded = total_baseline_emissions_traded - total_abatement_traded
+    total_abatement_traded = get_total_emissions(sd_df_traded, 'Abatement')
+    total_baseline_traded = get_total_emissions(bl_df_traded, 'Baseline')
+    pathway_emissions_traded = total_baseline_traded - total_abatement_traded
     
     # fill cells manually
-    agg_df.loc['Baseline emissions total'] = total_baseline_emissions
+    agg_df.loc['Baseline emissions total'] = total_baseline
     agg_df.loc['Baseline emissions total', 'Aggregate Variable'] = 'Baseline emissions total'
     agg_df.loc['Baseline emissions total', 'Variable Unit'] = 'MtCO2e'
     agg_df.loc['Baseline emissions total', 'Scenario'] = 'Baseline'
 
-    agg_df.loc['Direct emissions total'] = total_pathway_emissions
+    agg_df.loc['Direct emissions total'] = pathway_emissions
     agg_df.loc['Direct emissions total', 'Aggregate Variable'] = 'Direct emissions total'
     agg_df.loc['Direct emissions total', 'Variable Unit'] = 'MtCO2e'
     agg_df.loc['Direct emissions total', 'Scenario'] = SCENARIO
 
     # traded
-    agg_df.loc['Baseline traded emissions total'] = total_baseline_emissions_traded
+    agg_df.loc['Baseline traded emissions total'] = total_baseline_traded
     agg_df.loc['Baseline traded emissions total', 'Aggregate Variable'] = 'Baseline traded emissions total'
     agg_df.loc['Baseline traded emissions total', 'Variable Unit'] = 'MtCO2e'
     agg_df.loc['Baseline traded emissions total', 'Scenario'] = 'Baseline'
 
-    agg_df.loc['Direct traded emissions total'] = total_pathway_emissions_traded
+    agg_df.loc['Direct traded emissions total'] = pathway_emissions_traded
     agg_df.loc['Direct traded emissions total', 'Aggregate Variable'] = 'Direct traded emissions total'
     agg_df.loc['Direct traded emissions total', 'Variable Unit'] = 'MtCO2e'
     agg_df.loc['Direct traded emissions total', 'Scenario'] = SCENARIO
