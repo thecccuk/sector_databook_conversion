@@ -363,6 +363,16 @@ def add_reee(nzip_path, df, baseline_col, post_reee_col, out_col, usecols="E:AL"
     return df
 
 
+def add_measure_id(df):
+    unique_columns = ['Subsector', 'Category4: Process', 'Category5: Selected Option']
+    df['config_key'] = df[unique_columns].astype(str).apply('-'.join, axis=1)
+    measures = df['config_key'].drop_duplicates().reset_index(drop=True)
+    measures = measures.sort_values()
+    id_mapping = {config: f"{i+1:02d}_Both" for i, config in enumerate(measures)}
+    df['Measure ID'] = df['config_key'].map(id_mapping)
+    df.drop('config_key', axis=1, inplace=True)
+
+
 def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):    
     """
     Process and aggregate measure-level data according to specified arguments.
@@ -439,6 +449,7 @@ def sd_measure_level(df, args, reee_args=None, baseline=True, nzip_path=None):
     sd_df = sd_df.loc[~abated] # remove intermediate rows used in the calculation
 
     #assert not sd_df.duplicated().any()
+    add_measure_id(sd_df)
     return sd_df
 
 def baseline_from_measure_level(df):
@@ -616,3 +627,46 @@ def get_aggregate_df(df, measure_level_kwargs, baseline_kwargs, sector):
     agg_df['Sector'] = sector
 
     return agg_df
+
+def get_measure_attributes(df):
+    df = df[['Measure ID','Subsector', 'Category4: Process', 'Category5: Selected Option']].copy()
+    df = df.drop_duplicates().sort_values(by='Measure ID').reset_index(drop=True)
+
+    # Step 2: Define the structure of the 'Measure attributes' DataFrame
+    # Assume we know the column names and their order from the original 'Measure attributes' sheet
+    # The following column names are placeholders; please replace them with the actual names
+    column_names = [
+        "Measure ID", "Scenario", "Sector", "Subsector", "Category3", "Category4: Process",
+        "Category5: Selected Option", "Category6", "Category7", "Category8", "Category9", "Category10",
+        "Category11", "Category12", "Category13", "Category14", "Category15", "Category16",
+        "Category17", "Category18", "Category19", "Category20", "Measure Name", "Measure Description",
+        "Scotland", "Wales", "Northern Ireland", "Optimism bias", "Cost with optimism bias",
+        "Cost of capital (optional)", "Asset lifetime", "Reducing demand for carbon-intensive activities",
+        "Improved efficiency in use of energy and resources", "Expansion of low-carbon energy (hydrogen and electricity)",
+        "Take-up of low carbon solutions: electrification", "Take up of low carbon solutions: hydrogen and other low-carbon tech",
+        "Take up of low carbon solutions: CO2 capture from fossil fuels and industry", "Offsetting emissions: Natural carbon storage",
+        "Offsetting emissions: engineered greenhouse removals", "Investment: private", "Investment: public", "Investment: household",
+        "Business supply", "Business adopt", "Business adopt percentage", "Type of choice",
+        "Percentage household green choices"
+    ]
+
+    # Create an empty DataFrame with these columns
+    measure_attributes_df = pd.DataFrame(columns=column_names)
+
+    # Populate the DataFrame
+    measure_attributes_df['Measure ID'] = df['Measure ID']
+    measure_attributes_df['Scenario'] = "Both Pathways"
+    measure_attributes_df['Sector'] = "Industry"
+    measure_attributes_df['Subsector'] = df['Subsector']
+    measure_attributes_df['Category4: Process'] = df['Category4: Process']
+    measure_attributes_df['Category5: Selected Option'] = df['Category5: Selected Option']
+
+    # Create a function to handle empty or NaN parts in the Measure Description
+    def create_description(row):
+        parts = [row['Subsector'], row['Category4: Process'], row['Category5: Selected Option']]
+        parts = [part for part in parts if not pd.isna(part) and part != '']
+        return '_'.join(parts)
+
+    # Apply the function to generate Measure Description
+    measure_attributes_df['Measure Description'] = df.apply(create_description, axis=1)
+    return measure_attributes_df
